@@ -1,0 +1,25 @@
+# Copyright 2021 Canonical
+# See LICENSE file for licensing details.
+name: lma-proxy
+
+description: |
+  This Juju machine charm that provides a single integration point in the machine world with the Kubernetes-based LMA
+
+summary: |
+  Single integration point in the machine world with the Kubernetes-based LMA
+
+tags:
+  - monitoring
+  - logging
+  - alerting
+
+series:
+  - focal
+
+provides:
+  prometheus-target:
+    interface: http
+
+requires:
+  upstream-prometheus-scrape:
+    interface: prometheus_scrape
