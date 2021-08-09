@@ -72,36 +72,32 @@ class LMAProxyCharm(CharmBase):
                 juju_model_uuid = self.model.uuid
                 juju_application = target_relation.app.name
 
-                scrape_jobs.extend(
-                    [
-                        {
-                            "job_name": "juju_{}_{}_{}_prometheus_scrape".format(
-                                juju_model,
-                                juju_model_uuid[:7],
-                                unit.name,
-                            ),
-                            "static_configs": [
-                                {
-                                    "targets": [
-                                        "{}:{}".format(
-                                            target_relation.data[unit].get("hostname"),
-                                            target_relation.data[unit].get("port"),
-                                        )
-                                    ],
-                                    "labels": {
-                                        "juju_model": juju_model,
-                                        "juju_model_uuid": juju_model_uuid,
-                                        "juju_application": juju_application,
-                                        "juju_unit": unit.name,
-                                    },
-                                }
-                            ],
-                        }
-
-                        for unit in target_relation.units
-
-                        if unit.app is not self.app
-                    ]
+                scrape_jobs.append(
+                    {
+                        "job_name": "juju_{}_{}_{}_prometheus_scrape".format(
+                            juju_model,
+                            juju_model_uuid[:7],
+                            juju_application,
+                        ),
+                        "static_configs": [
+                            {
+                                "targets": [
+                                    "{}:{}".format(
+                                        target_relation.data[unit].get("hostname"),
+                                        target_relation.data[unit].get("port"),
+                                    )
+                                ],
+                                "labels": {
+                                    "juju_model": juju_model,
+                                    "juju_model_uuid": juju_model_uuid,
+                                    "juju_application": juju_application,
+                                    "juju_unit": unit.name,
+                                },
+                            }
+                            for unit in target_relation.units
+                            if unit.app is not self.app
+                        ],
+                    }
                 )
 
             self._stored.scrape_jobs = scrape_jobs

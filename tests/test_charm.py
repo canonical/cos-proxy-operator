@@ -42,36 +42,35 @@ class LMAProxyCharmTest(unittest.TestCase):
             },
         )
 
-        self.assertIn(
-            {
-                "job_name": "juju_testmodel_1234567_target-app/0_prometheus_scrape",
-                "static_configs": {
-                    "targets": ["scrape_target_0:1234"],
-                    "labels": {
-                        "juju_model": "testmodel",
-                        "juju_model_uuid": "1234567890",
-                        "juju_application": "target-app",
-                        "juju_unit": "target-app/0"
-                    }
-                }
-            },
-            self.harness.charm._stored.scrape_jobs
+        self.assertEqual(len(self.harness.charm._stored.scrape_jobs), 1)
+
+        scrape_job = self.harness.charm._stored.scrape_jobs[0]
+
+        self.assertEqual(
+            scrape_job["job_name"],
+            "juju_testmodel_1234567_target-app_prometheus_scrape"
         )
-        self.assertIn(
-            {
-                "job_name": "juju_testmodel_1234567_target-app/1_prometheus_scrape",
-                "static_configs": {
-                    "targets": ["scrape_target_1:1234"],
-                    "labels": {
-                        "juju_model": "testmodel",
-                        "juju_model_uuid": "1234567890",
-                        "juju_application": "target-app",
-                        "juju_unit": "target-app/1"
-                    }
-                }
-            },
-            self.harness.charm._stored.scrape_jobs
-        )
+
+        self.assertEqual(len(scrape_job["static_configs"]), 2)
+        self.assertIn({
+            "targets": ["scrape_target_0:1234"],
+            "labels": {
+                "juju_model": "testmodel",
+                "juju_model_uuid": "1234567890",
+                "juju_application": "target-app",
+                "juju_unit": "target-app/0"
+            }
+        }, scrape_job["static_configs"])
+        self.assertIn({
+            "targets": ["scrape_target_1:1234"],
+            "labels": {
+                "juju_model": "testmodel",
+                "juju_model_uuid": "1234567890",
+                "juju_application": "target-app",
+                "juju_unit": "target-app/1"
+            }
+        }, scrape_job["static_configs"])
+
         self.assertEqual(
             self.harness.model.unit.status,
             BlockedStatus("Missing needed upstream relations: upstream-prometheus-scrape")
@@ -101,6 +100,33 @@ class LMAProxyCharmTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(len(self.harness.charm._stored.scrape_jobs), 2)
+        self.assertEqual(len(self.harness.charm._stored.scrape_jobs), 1)
+
+        scrape_job = self.harness.charm._stored.scrape_jobs[0]
+
+        self.assertEqual(
+            scrape_job["job_name"],
+            "juju_testmodel_1234567_target-app_prometheus_scrape"
+        )
+
+        self.assertEqual(len(scrape_job["static_configs"]), 2)
+        self.assertIn({
+            "targets": ["scrape_target_0:1234"],
+            "labels": {
+                "juju_model": "testmodel",
+                "juju_model_uuid": "1234567890",
+                "juju_application": "target-app",
+                "juju_unit": "target-app/0"
+            }
+        }, scrape_job["static_configs"])
+        self.assertIn({
+            "targets": ["scrape_target_1:1234"],
+            "labels": {
+                "juju_model": "testmodel",
+                "juju_model_uuid": "1234567890",
+                "juju_application": "target-app",
+                "juju_unit": "target-app/1"
+            }
+        }, scrape_job["static_configs"])
 
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
