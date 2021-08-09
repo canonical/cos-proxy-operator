@@ -16,10 +16,8 @@ tags:
 series:
   - focal
 
-provides:
-  prometheus-target:
-    interface: http
-
 requires:
   upstream-prometheus-scrape:
     interface: prometheus_scrape
+  prometheus-target:
+    interface: http

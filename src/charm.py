@@ -13,13 +13,11 @@ implements a relation to the PostgreSQL charm.
 
 import logging
 
+from charms.prometheus_k8s.v0.prometheus import PrometheusConsumer
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
-
-from charms.prometheus_k8s.v0.prometheus import PrometheusConsumer
-
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +46,13 @@ class LMAProxyCharm(CharmBase):
 
         # The PrometheusConsumer takes care of all the handling
         # of the "upstream-prometheus-scrape" relation
+        # Note self._stored.scrape_jobs is of type StoredDict
         self.prometheus = PrometheusConsumer(
             self,
             "upstream-prometheus-scrape",
             {"prometheus": ">=2.0"},
             self.on.start,
-            jobs=self._stored.scrape_jobs
+            jobs=vars(self._stored.scrape_jobs)["_under"],
         )
 
     def _on_prometheus_target_relation_changed(self, event):
@@ -81,22 +80,26 @@ class LMAProxyCharm(CharmBase):
                                 juju_model_uuid[:7],
                                 unit.name,
                             ),
-                            "static_configs": {
-                                "targets": [
-                                    "{}:{}".format(
-                                        target_relation.data[unit].get("hostname"),
-                                        target_relation.data[unit].get("port")
-                                    )
-                                ],
-                                "labels": {
-                                    "juju_model": juju_model,
-                                    "juju_model_uuid": juju_model_uuid,
-                                    "juju_application": juju_application,
-                                    "juju_unit": unit.name
+                            "static_configs": [
+                                {
+                                    "targets": [
+                                        "{}:{}".format(
+                                            target_relation.data[unit].get("hostname"),
+                                            target_relation.data[unit].get("port"),
+                                        )
+                                    ],
+                                    "labels": {
+                                        "juju_model": juju_model,
+                                        "juju_model_uuid": juju_model_uuid,
+                                        "juju_application": juju_application,
+                                        "juju_unit": unit.name,
+                                    },
                                 }
-                            },
+                            ],
                         }
+
                         for unit in target_relation.units
+
                         if unit.app is not self.app
                     ]
                 )
