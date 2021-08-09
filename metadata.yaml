@@ -17,7 +17,7 @@ series:
   - focal
 
 requires:
-  upstream-prometheus-scrape:
+  downstream-prometheus-scrape:
     interface: prometheus_scrape
   prometheus-target:
     interface: http

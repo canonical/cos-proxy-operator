@@ -14,7 +14,7 @@ implements a relation to the PostgreSQL charm.
 import logging
 
 from charms.prometheus_k8s.v0.prometheus import PrometheusConsumer
-from ops.charm import CharmBase
+from ops.charm import CharmBase, RelationBrokenEvent
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
@@ -44,16 +44,32 @@ class LMAProxyCharm(CharmBase):
             self._on_prometheus_target_relation_changed,
         )
 
+        self.framework.observe(
+            self.on.downstream_prometheus_scrape_relation_joined,
+            self._on_downstream_prometheus_scrape_relation_changed,
+        )
+        self.framework.observe(
+            self.on.downstream_prometheus_scrape_relation_changed,
+            self._on_downstream_prometheus_scrape_relation_changed,
+        )
+        self.framework.observe(
+            self.on.downstream_prometheus_scrape_relation_broken,
+            self._on_downstream_prometheus_scrape_relation_changed,
+        )
+
         # The PrometheusConsumer takes care of all the handling
-        # of the "upstream-prometheus-scrape" relation
+        # of the "downstream-prometheus-scrape" relation
         # Note self._stored.scrape_jobs is of type StoredDict
         self.prometheus = PrometheusConsumer(
             self,
-            "upstream-prometheus-scrape",
+            "downstream-prometheus-scrape",
             {"prometheus": ">=2.0"},
             self.on.start,
             jobs=vars(self._stored.scrape_jobs)["_under"],
         )
+
+    def _on_downstream_prometheus_scrape_relation_changed(self, event):
+        self._check_needed_downstream_exists(event)
 
     def _on_prometheus_target_relation_changed(self, event):
         """Iterate all the existing prometheus_scrape relations
@@ -62,66 +78,75 @@ class LMAProxyCharm(CharmBase):
 
         self.unit.status = MaintenanceStatus("Updating Prometheus scrape jobs")
 
-        if "prometheus-target" in self.model.relations.keys():
-            scrape_jobs = []
+        scrape_jobs = []
 
-            for target_relation in self.model.relations["prometheus-target"]:
-                # One static config per unit, as we need to specify
-                # the entire Juju topology manually
-                juju_model = self.model.name
-                juju_model_uuid = self.model.uuid
-                juju_application = target_relation.app.name
+        for target_relation in self.model.relations["prometheus-target"]:
+            if isinstance(event, RelationBrokenEvent):
+                if target_relation is event.relation:
+                    continue
 
-                scrape_jobs.append(
-                    {
-                        "job_name": "juju_{}_{}_{}_prometheus_scrape".format(
-                            juju_model,
-                            juju_model_uuid[:7],
-                            juju_application,
-                        ),
-                        "static_configs": [
-                            {
-                                "targets": [
-                                    "{}:{}".format(
-                                        target_relation.data[unit].get("hostname"),
-                                        target_relation.data[unit].get("port"),
-                                    )
-                                ],
-                                "labels": {
-                                    "juju_model": juju_model,
-                                    "juju_model_uuid": juju_model_uuid,
-                                    "juju_application": juju_application,
-                                    "juju_unit": unit.name,
-                                },
-                            }
-                            for unit in target_relation.units
-                            if unit.app is not self.app
-                        ],
-                    }
-                )
+            # One static config per unit, as we need to specify
+            # the entire Juju topology manually
+            juju_model = self.model.name
+            juju_model_uuid = self.model.uuid
+            juju_application = target_relation.app.name
 
-            self._stored.scrape_jobs = scrape_jobs
-        else:
-            self._stored.scrape_jobs = []
+            scrape_jobs.append(
+                {
+                    "job_name": "juju_{}_{}_{}_prometheus_scrape".format(
+                        juju_model,
+                        juju_model_uuid[:7],
+                        juju_application,
+                    ),
+                    "static_configs": [
+                        {
+                            "targets": [
+                                "{}:{}".format(
+                                    target_relation.data[unit].get("hostname"),
+                                    target_relation.data[unit].get("port"),
+                                )
+                            ],
+                            "labels": {
+                                "juju_model": juju_model,
+                                "juju_model_uuid": juju_model_uuid,
+                                "juju_application": juju_application,
+                                "juju_unit": unit.name,
+                                "host": target_relation.data[unit].get("hostname")
+                            },
+                        }
+                        for unit in target_relation.units
+                        if unit.app is not self.app
+                    ],
+                }
+            )
 
-        # Set the charm to blocked if there is no upstream to send
-        self._check_needed_upstream_exists()
+        self._stored.scrape_jobs = scrape_jobs
 
-    def _check_needed_upstream_exists(self):
-        """Set the charm to blocked if there is no upstream of the
+        # Set the charm to blocked if there is no downstream to send
+        self._check_needed_downstream_exists()
+
+        if not isinstance(event, RelationBrokenEvent):
+            self.prometheus.update_scrape_jobs(scrape_jobs)
+
+    def _check_needed_downstream_exists(self, event=None):
+        """Set the charm to blocked if there is no downstream of the
         right type available
         """
 
-        missing_upstreams = []
+        missing_downstreams = []
 
         if self._stored.scrape_jobs:
-            if not self.model.relations["upstream-prometheus-scrape"]:
-                missing_upstreams.append("upstream-prometheus-scrape")
+            # I cannot figure out how to appease the linter so there goes repetition
+            if isinstance(event, RelationBrokenEvent):
+                if event.relation.name == "downstream-prometheus-scrape":
+                    missing_downstreams.append("downstream-prometheus-scrape")
+            elif not self.model.relations["downstream-prometheus-scrape"]:
+                missing_downstreams.append("downstream-prometheus-scrape")
 
-        if missing_upstreams:
+        if missing_downstreams:
             self.unit.status = BlockedStatus(
-                "Missing needed upstream relations: {}".format(
-                    ", ".join(missing_upstreams)
+                "Missing needed downstream relations: {}".format(
+                    ", ".join(missing_downstreams)
                 )
             )
         else:
