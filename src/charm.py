@@ -136,6 +136,8 @@ class LMAProxyCharm(CharmBase):
 
         self._stored.scrape_jobs = scrape_jobs
 
+        logger.debug("Scrape-jobs updated: %s", scrape_jobs)
+
         # Set the charm to blocked if there is no downstream to send
         self._check_needed_downstream_exists()
 
