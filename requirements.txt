@@ -1,1 +1,2 @@
-git+git://github.com/canonical/operator
+#git+git://github.com/canonical/operator
+git+git://github.com/mmanciop/operator@fix-test-harness#egg=ops

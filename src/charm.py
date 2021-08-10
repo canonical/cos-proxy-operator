@@ -14,7 +14,7 @@ implements a relation to the PostgreSQL charm.
 import logging
 
 from charms.prometheus_k8s.v0.prometheus import PrometheusConsumer
-from ops.charm import CharmBase, RelationBrokenEvent
+from ops.charm import CharmBase, RelationBrokenEvent, RelationDepartedEvent
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
@@ -37,6 +37,10 @@ class LMAProxyCharm(CharmBase):
         )
         self.framework.observe(
             self.on.prometheus_target_relation_changed,
+            self._on_prometheus_target_relation_changed,
+        )
+        self.framework.observe(
+            self.on.prometheus_target_relation_departed,
             self._on_prometheus_target_relation_changed,
         )
         self.framework.observe(
@@ -91,34 +95,44 @@ class LMAProxyCharm(CharmBase):
             juju_model_uuid = self.model.uuid
             juju_application = target_relation.app.name
 
-            scrape_jobs.append(
-                {
-                    "job_name": "juju_{}_{}_{}_prometheus_scrape".format(
-                        juju_model,
-                        juju_model_uuid[:7],
-                        juju_application,
-                    ),
-                    "static_configs": [
-                        {
-                            "targets": [
-                                "{}:{}".format(
-                                    target_relation.data[unit].get("hostname"),
-                                    target_relation.data[unit].get("port"),
-                                )
-                            ],
-                            "labels": {
-                                "juju_model": juju_model,
-                                "juju_model_uuid": juju_model_uuid,
-                                "juju_application": juju_application,
-                                "juju_unit": unit.name,
-                                "host": target_relation.data[unit].get("hostname")
-                            },
-                        }
-                        for unit in target_relation.units
-                        if unit.app is not self.app
-                    ],
-                }
-            )
+            # Add a target only when we have at least the hostname
+            units_to_target = [
+                unit
+                for unit in target_relation.units
+                if unit.app is not self.app and not (
+                    isinstance(event, RelationDepartedEvent) and event.unit is unit
+                ) and target_relation.data[unit].get("hostname")
+            ]
+
+            if units_to_target:
+                scrape_jobs.append(
+                    {
+                        "job_name": "juju_{}_{}_{}_prometheus_scrape".format(
+                            juju_model,
+                            juju_model_uuid[:7],
+                            juju_application,
+                        ),
+                        "static_configs": [
+                            {
+                                "targets": [
+                                    "{}:{}".format(
+                                        target_relation.data[unit].get("hostname"),
+                                        target_relation.data[unit].get("port"),
+                                    ) if target_relation.data[unit].get("port")
+                                    else str(target_relation.data[unit].get("hostname"))
+                                ],
+                                "labels": {
+                                    "juju_model": juju_model,
+                                    "juju_model_uuid": juju_model_uuid,
+                                    "juju_application": juju_application,
+                                    "juju_unit": unit.name,
+                                    "host": target_relation.data[unit].get("hostname")
+                                },
+                            }
+                            for unit in units_to_target
+                        ],
+                    }
+                )
 
         self._stored.scrape_jobs = scrape_jobs
 

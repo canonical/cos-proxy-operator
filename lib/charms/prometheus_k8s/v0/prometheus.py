@@ -802,14 +802,12 @@ class PrometheusConsumer(ConsumerBase):
             for job in scrape_jobs
         ]
 
-        for relation_name, relations in self._charm.model.relations.items():
-            if self._relation_name == relation_name:
-                for relation in relations:
-                    self._set_scrape_metadata(relation, {
-                        "scrape_metadata": json.dumps(self._scrape_metadata),
-                        "scrape_jobs": json.dumps(self._jobs),
-                        "alert_rules": json.dumps({"groups": self._labeled_alert_groups or []}),
-                    })
+        for relation in self._charm.model.relations[self._relation_name]:
+            self._set_scrape_metadata(relation, {
+                "scrape_metadata": json.dumps(self._scrape_metadata),
+                "scrape_jobs": json.dumps(self._jobs),
+                "alert_rules": json.dumps({"groups": self._labeled_alert_groups or []}),
+            })
 
     def _set_scrape_metadata(self, relation, relation_data):
         if not self._charm.unit.is_leader():
