@@ -15,10 +15,7 @@ from ops.testing import Harness
 class LMAProxyCharmTest(unittest.TestCase):
     def setUp(self):
         self.harness = Harness(LMAProxyCharm)
-        self.harness.set_model_info(
-            name="testmodel",
-            uuid="1234567890"
-        )
+        self.harness.set_model_info(name="testmodel", uuid="1234567890")
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
@@ -48,7 +45,9 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing needed downstream relations: downstream-prometheus-scrape")
+            BlockedStatus(
+                "Missing needed downstream relations: downstream-prometheus-scrape"
+            ),
         )
 
     @patch("ops.testing._TestingModelBackend.network_get")
@@ -88,47 +87,51 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             scrape_job["job_name"],
-            "juju_testmodel_1234567_target-app_prometheus_scrape"
+            "juju_testmodel_1234567_target-app_prometheus_scrape",
         )
 
         self.assertEqual(len(scrape_job["static_configs"]), 2)
-        self.assertIn({
-            "targets": ["scrape_target_0:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/0",
-                "host": "scrape_target_0",
-            }
-        }, scrape_job["static_configs"])
-        self.assertIn({
-            "targets": ["scrape_target_1:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/1",
-                "host": "scrape_target_1",
-            }
-        }, scrape_job["static_configs"])
+        self.assertIn(
+            {
+                "targets": ["scrape_target_0:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/0",
+                    "host": "scrape_target_0",
+                },
+            },
+            scrape_job["static_configs"],
+        )
+        self.assertIn(
+            {
+                "targets": ["scrape_target_1:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/1",
+                    "host": "scrape_target_1",
+                },
+            },
+            scrape_job["static_configs"],
+        )
 
         downstream_rel_data = self.harness.get_relation_data(
             downstream_rel_id, self.harness.model.app.name
         )
 
-        self.assertDictEqual({
-            "model": "testmodel",
-            "model_uuid": "1234567890",
-            "application": "lma-proxy",
-        }, json.loads(downstream_rel_data["scrape_metadata"]))
-
-        self.assertEqual(
-            downstream_rel_data["alert_rules"],
-            json.dumps({
-                "groups": []
-            })
+        self.assertDictEqual(
+            {
+                "model": "testmodel",
+                "model_uuid": "1234567890",
+                "application": "lma-proxy",
+            },
+            json.loads(downstream_rel_data["scrape_metadata"]),
         )
+
+        self.assertEqual(downstream_rel_data["alert_rules"], json.dumps({"groups": []}))
 
         scrape_jobs = json.loads(downstream_rel_data["scrape_jobs"])
 
@@ -138,39 +141,47 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             scrape_job["job_name"],
-            "juju_testmodel_1234567_target-app_prometheus_scrape"
+            "juju_testmodel_1234567_target-app_prometheus_scrape",
         )
 
         static_configs = scrape_job["static_configs"]
 
         self.assertEqual(len(static_configs), 2)
 
-        self.assertIn({
-            "targets": ["scrape_target_0:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/0",
-                "host": "scrape_target_0",
-            }
-        }, static_configs)
+        self.assertIn(
+            {
+                "targets": ["scrape_target_0:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/0",
+                    "host": "scrape_target_0",
+                },
+            },
+            static_configs,
+        )
 
-        self.assertIn({
-            "targets": ["scrape_target_1:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/1",
-                "host": "scrape_target_1",
-            }
-        }, static_configs)
+        self.assertIn(
+            {
+                "targets": ["scrape_target_1:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/1",
+                    "host": "scrape_target_1",
+                },
+            },
+            static_configs,
+        )
 
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
     @patch("ops.testing._TestingModelBackend.network_get")
-    def test_prometheus_target_relation_with_downstream_added_second(self, mock_net_get):
+    def test_prometheus_target_relation_with_downstream_added_second(
+        self, mock_net_get
+    ):
         self.harness.set_leader(True)
         self._mock_network_get(mock_net_get)
 
@@ -206,47 +217,51 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             scrape_job["job_name"],
-            "juju_testmodel_1234567_target-app_prometheus_scrape"
+            "juju_testmodel_1234567_target-app_prometheus_scrape",
         )
 
         self.assertEqual(len(scrape_job["static_configs"]), 2)
-        self.assertIn({
-            "targets": ["scrape_target_0:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/0",
-                "host": "scrape_target_0",
-            }
-        }, scrape_job["static_configs"])
-        self.assertIn({
-            "targets": ["scrape_target_1:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/1",
-                "host": "scrape_target_1",
-            }
-        }, scrape_job["static_configs"])
+        self.assertIn(
+            {
+                "targets": ["scrape_target_0:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/0",
+                    "host": "scrape_target_0",
+                },
+            },
+            scrape_job["static_configs"],
+        )
+        self.assertIn(
+            {
+                "targets": ["scrape_target_1:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/1",
+                    "host": "scrape_target_1",
+                },
+            },
+            scrape_job["static_configs"],
+        )
 
         downstream_rel_data = self.harness.get_relation_data(
             downstream_rel_id, self.harness.model.app.name
         )
 
-        self.assertDictEqual({
-            "model": "testmodel",
-            "model_uuid": "1234567890",
-            "application": "lma-proxy",
-        }, json.loads(downstream_rel_data["scrape_metadata"]))
-
-        self.assertEqual(
-            downstream_rel_data["alert_rules"],
-            json.dumps({
-                "groups": []
-            })
+        self.assertDictEqual(
+            {
+                "model": "testmodel",
+                "model_uuid": "1234567890",
+                "application": "lma-proxy",
+            },
+            json.loads(downstream_rel_data["scrape_metadata"]),
         )
+
+        self.assertEqual(downstream_rel_data["alert_rules"], json.dumps({"groups": []}))
 
         scrape_jobs = json.loads(downstream_rel_data["scrape_jobs"])
 
@@ -256,34 +271,40 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             scrape_job["job_name"],
-            "juju_testmodel_1234567_target-app_prometheus_scrape"
+            "juju_testmodel_1234567_target-app_prometheus_scrape",
         )
 
         static_configs = scrape_job["static_configs"]
 
         self.assertEqual(len(static_configs), 2)
 
-        self.assertIn({
-            "targets": ["scrape_target_0:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/0",
-                "host": "scrape_target_0",
-            }
-        }, static_configs)
+        self.assertIn(
+            {
+                "targets": ["scrape_target_0:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/0",
+                    "host": "scrape_target_0",
+                },
+            },
+            static_configs,
+        )
 
-        self.assertIn({
-            "targets": ["scrape_target_1:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/1",
-                "host": "scrape_target_1",
-            }
-        }, static_configs)
+        self.assertIn(
+            {
+                "targets": ["scrape_target_1:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/1",
+                    "host": "scrape_target_1",
+                },
+            },
+            static_configs,
+        )
 
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
@@ -315,7 +336,9 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing needed downstream relations: downstream-prometheus-scrape")
+            BlockedStatus(
+                "Missing needed downstream relations: downstream-prometheus-scrape"
+            ),
         )
 
     @patch("ops.testing._TestingModelBackend.network_get")
@@ -351,7 +374,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
     @patch("ops.testing._TestingModelBackend.network_get")
-    def test_prometheus_target_relation_with_one_downstream_relations_deleted(self, mock_net_get):
+    def test_prometheus_target_relation_with_one_downstream_relations_deleted(
+        self, mock_net_get
+    ):
         self.harness.set_leader(True)
         self._mock_network_get(mock_net_get)
 
@@ -424,18 +449,16 @@ class LMAProxyCharmTest(unittest.TestCase):
             downstream_rel_id, self.harness.model.app.name
         )
 
-        self.assertDictEqual({
-            "model": "testmodel",
-            "model_uuid": "1234567890",
-            "application": "lma-proxy",
-        }, json.loads(downstream_rel_data["scrape_metadata"]))
-
-        self.assertEqual(
-            downstream_rel_data["alert_rules"],
-            json.dumps({
-                "groups": []
-            })
+        self.assertDictEqual(
+            {
+                "model": "testmodel",
+                "model_uuid": "1234567890",
+                "application": "lma-proxy",
+            },
+            json.loads(downstream_rel_data["scrape_metadata"]),
         )
+
+        self.assertEqual(downstream_rel_data["alert_rules"], json.dumps({"groups": []}))
 
         scrape_jobs = json.loads(downstream_rel_data["scrape_jobs"])
 
@@ -445,34 +468,40 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             scrape_job["job_name"],
-            "juju_testmodel_1234567_target-app_prometheus_scrape"
+            "juju_testmodel_1234567_target-app_prometheus_scrape",
         )
 
         static_configs = scrape_job["static_configs"]
 
         self.assertEqual(len(static_configs), 2)
 
-        self.assertIn({
-            "targets": ["scrape_target_0:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/0",
-                "host": "scrape_target_0",
-            }
-        }, static_configs)
+        self.assertIn(
+            {
+                "targets": ["scrape_target_0:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/0",
+                    "host": "scrape_target_0",
+                },
+            },
+            static_configs,
+        )
 
-        self.assertIn({
-            "targets": ["scrape_target_1:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/1",
-                "host": "scrape_target_1",
-            }
-        }, static_configs)
+        self.assertIn(
+            {
+                "targets": ["scrape_target_1:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/1",
+                    "host": "scrape_target_1",
+                },
+            },
+            static_configs,
+        )
 
         self.harness.remove_relation_unit(rel_id, "target-app/1")
 
@@ -490,16 +519,19 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(len(static_configs), 1)
 
-        self.assertIn({
-            "targets": ["scrape_target_0:1234"],
-            "labels": {
-                "juju_model": "testmodel",
-                "juju_model_uuid": "1234567890",
-                "juju_application": "target-app",
-                "juju_unit": "target-app/0",
-                "host": "scrape_target_0",
-            }
-        }, static_configs)
+        self.assertIn(
+            {
+                "targets": ["scrape_target_0:1234"],
+                "labels": {
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "1234567890",
+                    "juju_application": "target-app",
+                    "juju_unit": "target-app/0",
+                    "host": "scrape_target_0",
+                },
+            },
+            static_configs,
+        )
 
     def _mock_network_get(self, mock_net_get):
         bind_address = "192.0.0.1"
