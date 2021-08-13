@@ -13,7 +13,7 @@ provide a scrape target for Prometheus.
 
 This Prometheus charm interacts with its scrape targets using its
 charm library. This charm library is constructed using the [Provider
-andConsumer](https://ops.readthedocs.io/en/latest/#module-ops.relation)
+and Consumer](https://ops.readthedocs.io/en/latest/#module-ops.relation)
 objects from the Operator Framework. This implies charms seeking to
 expose a metric endpoints for the Prometheus charm, must do so using
 the `PrometheusConsumer` object from this charm library. For the
@@ -302,11 +302,12 @@ relation data provide eponymous information.
 """
 
 import json
-import yaml
 import logging
 from pathlib import Path
-from ops.framework import EventSource, EventBase, ObjectEvents
-from ops.relation import ProviderBase, ConsumerBase
+
+import yaml
+from ops.framework import EventBase, EventSource, ObjectEvents
+from ops.relation import ConsumerBase, ProviderBase
 
 # The unique Charmhub library identifier, never change it
 LIBID = "bc84295fef5f4049878f07b131968ee2"
@@ -316,7 +317,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 2
+LIBPATCH = 5
 
 
 logger = logging.getLogger(__name__)
@@ -704,9 +705,16 @@ class PrometheusProvider(ProviderBase):
 
 
 class PrometheusConsumer(ConsumerBase):
-    _ALERT_RULES_PATH = "prometheus_alert_rules"
-
-    def __init__(self, charm, name, consumes, service_event, jobs=[], multi=False):
+    def __init__(
+        self,
+        charm,
+        name,
+        consumes,
+        service_event,
+        jobs=[],
+        multi=False,
+        alert_rules_path="prometheus_alert_rules",
+    ):
         """Construct a Prometheus charm client.
 
         The `PrometheusConsumer` object provides scrape configurations
@@ -747,7 +755,7 @@ class PrometheusConsumer(ConsumerBase):
                 dictionary are corresponding minimal acceptable
                 semantic version specfications for the monitoring
                 service.
-            service: a `CharmEvent` in response to which each unit
+            service_event: a `CharmEvent` in response to which each unit
                 must advertise its address.
             jobs: an optional list of dictionaries where each
                 dictionary represents the Prometheus scrape
@@ -757,10 +765,14 @@ class PrometheusConsumer(ConsumerBase):
             multi: an optional (default False) flag to indicate if
                 this object must support interaction with multiple
                 Prometheus monitoring service providers.
+            alert_rules_path: an optional path for the location of alert rules
+                files.  Defaults to "prometheus_alert_rules" at the top level of
+                the charm.
         """
         super().__init__(charm, name, consumes, multi)
 
         self._charm = charm
+        self._ALERT_RULES_PATH = alert_rules_path
         self._service_event = service_event
         self._relation_name = name
         # Sanitize job configurations to the supported subset of parameters
@@ -768,10 +780,11 @@ class PrometheusConsumer(ConsumerBase):
         self._multi_mode = multi
 
         events = self._charm.on[self._relation_name]
-        self.framework.observe(events.relation_joined, self._process_relation_change)
+        self.framework.observe(events.relation_joined, self._set_scrape_metadata)
+        self.framework.observe(events.relation_changed, self._set_scrape_metadata)
         self.framework.observe(self._service_event, self._set_unit_ip)
 
-    def _process_relation_change(self, event):
+    def _set_scrape_metadata(self, event):
         """Ensure scrape targets metadata is made available to Prometheus.
 
         When a consumer charm is related to a Prometheus provider, the
@@ -787,35 +800,17 @@ class PrometheusConsumer(ConsumerBase):
         if not self._charm.unit.is_leader():
             return
 
-        self._set_scrape_metadata(event.relation, {
-            "scrape_metadata": json.dumps(self._scrape_metadata),
-            "scrape_jobs": json.dumps(self._jobs),
-            "alert_rules": json.dumps({"groups": self._labeled_alert_groups or []}),
-        })
+        event.relation.data[self._charm.app]["scrape_metadata"] = json.dumps(
+            self._scrape_metadata
+        )
+        event.relation.data[self._charm.app]["scrape_jobs"] = json.dumps(
+            self._scrape_jobs
+        )
 
-    def update_scrape_jobs(self, scrape_jobs):
-        if not self._charm.unit.is_leader():
-            return
-
-        self._jobs = [
-            _sanitize_scrape_configuration(job)
-            for job in scrape_jobs
-        ]
-
-        for relation in self._charm.model.relations[self._relation_name]:
-            self._set_scrape_metadata(relation, {
-                "scrape_metadata": json.dumps(self._scrape_metadata),
-                "scrape_jobs": json.dumps(self._jobs),
-                "alert_rules": json.dumps({"groups": self._labeled_alert_groups or []}),
-            })
-
-    def _set_scrape_metadata(self, relation, relation_data):
-        if not self._charm.unit.is_leader():
-            return
-
-        relation.data[self._charm.app]["scrape_metadata"] = relation_data["scrape_metadata"]
-        relation.data[self._charm.app]["scrape_jobs"] = relation_data["scrape_jobs"]
-        relation.data[self._charm.app]["alert_rules"] = relation_data["alert_rules"]
+        if alert_groups := self._labeled_alert_groups:
+            event.relation.data[self._charm.app]["alert_rules"] = json.dumps(
+                {"groups": alert_groups}
+            )
 
     def _set_unit_ip(self, event):
         """Set unit host address
@@ -887,6 +882,7 @@ class PrometheusConsumer(ConsumerBase):
             if not path.is_file():
                 continue
 
+            logger.debug("Reading alert rule from %s", path)
             with path.open() as rule_file:
                 # Load a list of rules from file then add labels and filters
                 try:
