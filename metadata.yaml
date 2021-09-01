@@ -15,10 +15,10 @@ tags:
 
 series:
   - focal
-
-requires:
+provides:
   downstream-prometheus-scrape:
     interface: prometheus_scrape
+requires:
   prometheus-target:
     interface: http
   prometheus-rules:
