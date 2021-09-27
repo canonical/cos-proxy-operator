@@ -163,6 +163,21 @@ each job must be given a unique name. For example
 It is also possible to configure other scrape related parameters using
 these job specifications as described by the Prometheus
 [documentation](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config).
+The permissible subset of job specific scrape configuration parameters
+supported in a `MetricsEndpointProvider` job specification are:
+
+- `job_name`
+- `metrics_path`
+- `static_configs`
+- `scrape_interval`
+- `scrape_timeout`
+- `proxy_url`
+- `relabel_configs`
+- `metrics_relabel_configs`
+- `sample_limit`
+- `label_limit`
+- `label_name_length_limit`
+- `label_value_lenght_limit`
 
 ## Consumer Library Usage
 
@@ -300,21 +315,49 @@ LIBPATCH = 6
 logger = logging.getLogger(__name__)
 
 
+ALLOWED_KEYS = {
+    "job_name",
+    "metrics_path",
+    "static_configs",
+    "scrape_interval",
+    "scrape_timeout",
+    "proxy_url",
+    "relabel_configs",
+    "metrics_relabel_configs",
+    "sample_limit",
+    "label_limit",
+    "label_name_length_limit",
+    "label_value_lenght_limit",
+}
+DEFAULT_JOB = {
+    "metrics_path": "/metrics",
+    "static_configs": [{"targets": ["*:80"]}],
+}
+
+
 def _sanitize_scrape_configuration(job) -> dict:
     """Restrict permissible scrape configuration options.
 
+    If job is empty then a default job is returned. The
+    default job is
+
+    ```
+    {
+        "metrics_path": "/metrics",
+        "static_configs": [{"targets": ["*:80"]}],
+    }
+    ```
+
     Args:
-        job: a dict containing a single Prometheus job_name
+        job: a dict containing a single Prometheus job
             specification.
 
     Returns:
         a dictionary containing a sanitized job specification.
     """
-    return {
-        "job_name": job.get("job_name"),
-        "metrics_path": job.get("metrics_path", "/metrics"),
-        "static_configs": job.get("static_configs", [{"targets": ["*:80"]}]),
-    }
+    sanitized_job = DEFAULT_JOB.copy()
+    sanitized_job.update({key: value for key, value in job.items() if key in ALLOWED_KEYS})
+    return sanitized_job
 
 
 class TargetsChangedEvent(EventBase):
@@ -548,12 +591,13 @@ class MetricsEndpointConsumer(Object):
         name = job.get("job_name")
         job_name = f"{job_name_prefix}_{name}" if name else job_name_prefix
 
-        config = {"job_name": job_name, "metrics_path": job["metrics_path"]}
+        labeled_job = job.copy()
+        labeled_job["job_name"] = job_name
 
         static_configs = job.get("static_configs")
-        config["static_configs"] = []
+        labeled_job["static_configs"] = []
 
-        relabel_config = {
+        instance_relabel_config = {
             "source_labels": ["juju_model", "juju_model_uuid", "juju_application"],
             "separator": "_",
             "target_label": "instance",
@@ -583,20 +627,23 @@ class MetricsEndpointConsumer(Object):
                 unitless_config = self._labeled_unitless_config(
                     unitless_targets, labels, scrape_metadata
                 )
-                config["static_configs"].append(unitless_config)
+                labeled_job["static_configs"].append(unitless_config)
 
             # label scrape targets that do have unit labels
             for host_name, host_address in hosts.items():
                 static_config = self._labeled_unit_config(
                     host_name, host_address, ports, labels, scrape_metadata
                 )
-                config["static_configs"].append(static_config)
-                if "juju_unit" not in relabel_config["source_labels"]:
-                    relabel_config["source_labels"].append("juju_unit")
+                labeled_job["static_configs"].append(static_config)
+                if "juju_unit" not in instance_relabel_config["source_labels"]:
+                    instance_relabel_config["source_labels"].append("juju_unit")
 
-        config["relabel_configs"] = [relabel_config]
+        # ensure topology relabeling of instance label is last in order of relabelings
+        relabel_configs = job.get("relabel_configs", [])
+        relabel_configs.append(instance_relabel_config)
+        labeled_job["relabel_configs"] = relabel_configs
 
-        return config
+        return labeled_job
 
     def _set_juju_labels(self, labels, scrape_metadata) -> dict:
         """Create a copy of metric labels with Juju topology information.
@@ -742,12 +789,13 @@ class MetricsEndpointProvider(Object):
         self._jobs = [_sanitize_scrape_configuration(job) for job in jobs]
 
         events = self._charm.on[self._relation_name]
-        self.framework.observe(events.relation_joined, self._set_scrape_metadata)
-        self.framework.observe(events.relation_changed, self._set_scrape_metadata)
+        self.framework.observe(events.relation_joined, self._set_scrape_job_spec)
+        self.framework.observe(events.relation_changed, self._set_scrape_job_spec)
         self.framework.observe(self._service_event, self._set_unit_ip)
+        self.framework.observe(self._charm.on.upgrade_charm, self._set_scrape_job_spec)
 
-    def _set_scrape_metadata(self, event):
-        """Ensure scrape targets metadata is made available to Prometheus.
+    def _set_scrape_job_spec(self, event):
+        """Ensure scrape target information is made available to Prometheus.
 
         When a metrics provider charm is related to a Prometheus charm, the
         metrics provider sets metadata related to its own scrape
@@ -760,20 +808,19 @@ class MetricsEndpointProvider(Object):
                 forward scrape jobs, alert rules, metrics endpoint host addresses
                 and related metadata to the Prometheus charm.
         """
-        event.relation.data[self._charm.unit]["prometheus_scrape_host"] = str(
-            self._charm.model.get_binding(event.relation).network.bind_address
-        )
+        self._set_unit_ip(event)
 
         if not self._charm.unit.is_leader():
             return
 
-        event.relation.data[self._charm.app]["scrape_metadata"] = json.dumps(self._scrape_metadata)
-        event.relation.data[self._charm.app]["scrape_jobs"] = json.dumps(self._scrape_jobs)
+        for relation in self._charm.model.relations[self._relation_name]:
+            relation.data[self._charm.app]["scrape_metadata"] = json.dumps(self._scrape_metadata)
+            relation.data[self._charm.app]["scrape_jobs"] = json.dumps(self._scrape_jobs)
 
-        if alert_groups := self._labeled_alert_groups:
-            event.relation.data[self._charm.app]["alert_rules"] = json.dumps(
-                {"groups": alert_groups}
-            )
+            if alert_groups := self._labeled_alert_groups:
+                relation.data[self._charm.app]["alert_rules"] = json.dumps(
+                    {"groups": alert_groups}
+                )
 
     def _set_unit_ip(self, event):
         """Set unit host address.
