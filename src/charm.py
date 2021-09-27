@@ -13,7 +13,7 @@ implements a relation to the PostgreSQL charm.
 
 import logging
 
-from charms.prometheus_k8s.v0.prometheus import MetricsEndpointAggregator
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointAggregator
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
