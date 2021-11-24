@@ -14,6 +14,7 @@ implements a relation to the PostgreSQL charm.
 import logging
 
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointAggregator
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
@@ -29,8 +30,39 @@ class LMAProxyCharm(CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
 
-        self._stored.set_default(have_prometheus=False)
-        self._stored.set_default(have_targets=False)
+        self._stored.set_default(
+            have_grafana=False,
+            have_prometheus=False,
+            have_targets=False
+        )
+
+        self._dashboard_aggregator = GrafanaDashboardAggregator(
+           self,
+           {
+             "grafana": "downstream-grafana-dashboard",
+             "grafana-dashboard": "dashboards",
+           },
+        )
+
+        self.framework.observe(
+            self.on.dashboards_relation_joined,
+            self._dashboards_relation_joined,
+        )
+
+        self.framework.observe(
+            self.on.dashboards_relation_broken,
+            self._dashboards_relation_broken,
+        )
+
+        self.framework.observe(
+            self.on.downstream_grafana_dashboard_relation_joined,
+            self._downstream_grafana_dashboard_relation_joined,
+        )
+
+        self.framework.observe(
+            self.on.downstream_grafana_dashboard_relation_broken,
+            self._downstream_grafana_dashboard_relation_broken,
+        )
 
         self._metrics_aggregator = MetricsEndpointAggregator(
             self,
@@ -63,6 +95,22 @@ class LMAProxyCharm(CharmBase):
 
         self._set_status()
 
+    def _dashboards_relation_joined(self, _):
+        self._stored.have_dashboards = True
+        self._set_status()
+
+    def _dashboards_relation_broken(self, _):
+        self._stored.have_dashboards = False
+        self._set_status()
+
+    def _downstream_grafana_dashboard_relation_joined(self, _):
+        self._stored.have_grafana = True
+        self._set_status()
+
+    def _downstream_grafana_dashboard_relation_broken(self, _):
+        self._stored.have_grafana = False
+        self._set_status()
+
     def _prometheus_target_relation_joined(self, _):
         self._stored.have_targets = True
         self._set_status()
@@ -80,14 +128,17 @@ class LMAProxyCharm(CharmBase):
         self._set_status()
 
     def _set_status(self):
-        if not self._stored.have_prometheus and not self._stored.have_targets:
-            message = "Missing Prometheus and scrape targets"
-        elif not self._stored.have_prometheus:
-            message = "Missing Prometheus relation"
-        elif not self._stored.have_targets:
-            message = "Missing scrape targets"
-        else:
-            message = ""
+        gen = lambda val, message: message if not val else ""
+        messages = {
+            "grafana": gen("Grafana relation", self._stored.have_grafana),
+            "prometheus": gen("Prometheus relation", self._stored.have_prometheus),
+            "scrape": gen("scrape targets", self._stored.have_targets),
+            "dashboards": gen("dashboards", self._stored.have_dashboards)
+        }
+
+        message = " and ".join(messages.values())
+
+        message = "Missing {}".format(message) if message else ""
 
         if message:
             self.unit.status = BlockedStatus(message)
