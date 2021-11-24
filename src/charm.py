@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
-# Copyright 2021 Canonical
-# See LICENSE file for licensing details.
+# -*- coding: utf-8 -*-
+#
+#  Copyright 2021 Canonical Ltd.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
 #
 # Learn more at: https://juju.is/docs/sdk
 
@@ -13,8 +26,8 @@ implements a relation to the PostgreSQL charm.
 
 import logging
 
-from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointAggregator
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
+from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointAggregator
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
@@ -24,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class LMAProxyCharm(CharmBase):
+    """This charm provides an interface between machine/reactive charms and Charmed Operators."""
 
     _stored = StoredState()
 
@@ -31,18 +45,10 @@ class LMAProxyCharm(CharmBase):
         super().__init__(*args)
 
         self._stored.set_default(
-            have_grafana=False,
-            have_prometheus=False,
-            have_targets=False
+            have_grafana=False, have_dashboards=False, have_prometheus=False, have_targets=False
         )
 
-        self._dashboard_aggregator = GrafanaDashboardAggregator(
-           self,
-           {
-             "grafana": "downstream-grafana-dashboard",
-             "grafana-dashboard": "dashboards",
-           },
-        )
+        self._dashboard_aggregator = GrafanaDashboardAggregator(self)
 
         self.framework.observe(
             self.on.dashboards_relation_joined,
@@ -128,17 +134,18 @@ class LMAProxyCharm(CharmBase):
         self._set_status()
 
     def _set_status(self):
-        gen = lambda val, message: message if not val else ""
-        messages = {
-            "grafana": gen("Grafana relation", self._stored.have_grafana),
-            "prometheus": gen("Prometheus relation", self._stored.have_prometheus),
-            "scrape": gen("scrape targets", self._stored.have_targets),
-            "dashboards": gen("dashboards", self._stored.have_dashboards)
-        }
+        message = ""
+        if (self._stored.have_grafana and not self._stored.have_dashboards) or (
+            self._stored.have_dashboards and not self._stored.have_grafana
+        ):
+            message = " one of (Grafana|dashboard) relation(s) "
 
-        message = " and ".join(messages.values())
+        if (self._stored.have_prometheus and not self._stored.have_targets) or (
+            self._stored.have_targets and not self._stored.have_prometheus
+        ):
+            message += "{} one of (Prometheus|target) relation(s)".format("and" if message else "")
 
-        message = "Missing {}".format(message) if message else ""
+        message = "Missing {}".format(message.strip()) if message else ""
 
         if message:
             self.unit.status = BlockedStatus(message)
