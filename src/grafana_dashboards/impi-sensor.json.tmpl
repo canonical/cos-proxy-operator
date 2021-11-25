@@ -3,7 +3,7 @@
 {
   "__inputs": [
     {
-      "name": "<< datasource >>",
+      "name": "{{ datasource }}",
       "label": "prometheus - Juju generated source",
       "description": "",
       "type": "datasource",
@@ -63,7 +63,7 @@
   "links": [],
   "panels": [
     {
-      "datasource": "<< datasource >>",
+      "datasource": "{{ datasource }}",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -140,7 +140,7 @@
       "type": "graph"
     },
     {
-      "datasource": "<< datasource >>",
+      "datasource": "{{ datasource }}",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -214,7 +214,7 @@
       "type": "graph"
     },
     {
-      "datasource": "<< datasource >>",
+      "datasource": "{{ datasource }}",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -288,7 +288,7 @@
       "type": "graph"
     },
     {
-      "datasource": "<< datasource >>",
+      "datasource": "{{ datasource }}",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -375,7 +375,7 @@
       {
         "allValue": null,
         "current": {},
-        "datasource": "<< datasource >>",
+        "datasource": "{{ datasource }}",
         "definition": "label_values(ipmi_sensor, host)",
         "description": null,
         "error": null,
