@@ -103,9 +103,16 @@ external hosts to access the Prometheus service there are a couple of extra
 steps.  These are in the microk8s documentation but a very brief summary is
 provided here for convenience.  Run these steps before creating the lma model.
 
-The IP address example used here is 10.5.21.1/32 which is accessible on ens3.
+For a Prometheus ingress to be exposed, an Ingress must be defined which is
+used as the argument to `nginx-ingress-integrator`. For trivial use cases,
+it is possible for this ingress to reside on the same primary IP address as the
+host machine, and route directly to Prometheus through NGINX. 
 
-```
+Alternatively, Prometheus may be exposed on a path or DNS subdomain.
+
+The IP address example used here is 10.5.21.1/32, which is accessible on ens3.
+
+```bash
 $ export netdevice=ens3
 $ export ipaddress=10.5.21.1/32
 $ sudo ip a add $ipaddress $netdevice
@@ -134,12 +141,15 @@ daemonset.apps/speaker created
 deployment.apps/controller created
 configmap/config created
 MetalLB is enabled
+```
 
-$ cat > ingress-service.yaml <<EOF
+To expose Prometheus directly, on a separate address, without NGINX as an intermediate:
+`$ cat > ingress-service.yaml <<EOF`
+```yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: ingress
+  name: prometheus-ingress
   namespace: ingress
 spec:
   selector:
@@ -157,7 +167,31 @@ spec:
       protocol: TCP
       port: 443
       targetPort: 443
-EOF
 
+```bash
 $ kubectl apply -f ingress-service.yaml
+```
+
+To route through an Ingress:
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  namespace: lma
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  ingressClassName: public
+  rules:
+  - http:
+      paths:
+      - path: /prom/(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus-k8s
+            port:
+              number: 9090
 ```
