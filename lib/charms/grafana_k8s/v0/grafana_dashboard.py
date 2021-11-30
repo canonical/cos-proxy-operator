@@ -8,6 +8,7 @@ import json
 import logging
 import lzma
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -48,6 +49,151 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RELATION_NAME = "grafana-dashboard"
 RELATION_INTERFACE_NAME = "grafana_dashboard"
+
+TEMPLATE_DROPDOWNS = [
+    {
+        "allValue": None,
+        "datasource": "${prometheusds}",
+        "definition": "label_values(up,juju_model)",
+        "description": None,
+        "error": None,
+        "hide": 0,
+        "includeAll": False,
+        "label": "Juju model",
+        "multi": False,
+        "name": "juju_model",
+        "query": {
+            "query": "label_values(up,juju_model)",
+            "refId": "StandardVariableQuery",
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": False,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": False,
+    },
+    {
+        "allValue": None,
+        "datasource": "${prometheusds}",
+        "definition": 'label_values(up{juju_model="$juju_model"},juju_model_uuid)',
+        "description": None,
+        "error": None,
+        "hide": 0,
+        "includeAll": False,
+        "label": "Juju model uuid",
+        "multi": False,
+        "name": "juju_model_uuid",
+        "query": {
+            "query": 'label_values(up{juju_model="$juju_model"},juju_model_uuid)',
+            "refId": "StandardVariableQuery",
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": False,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": False,
+    },
+    {
+        "allValue": None,
+        "datasource": "${prometheusds}",
+        "definition": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid"},juju_application)',
+        "description": None,
+        "error": None,
+        "hide": 0,
+        "includeAll": False,
+        "label": "Juju application",
+        "multi": False,
+        "name": "juju_application",
+        "query": {
+            "query": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid"},juju_application)',
+            "refId": "StandardVariableQuery",
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": False,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": False,
+    },
+    {
+        "allValue": None,
+        "datasource": "${prometheusds}",
+        "definition": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid",juju_application="$juju_application"},juju_unit)',
+        "description": None,
+        "error": None,
+        "hide": 0,
+        "includeAll": False,
+        "label": "Juju unit",
+        "multi": False,
+        "name": "juju_unit",
+        "query": {
+            "query": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid",juju_application="$juju_application"},juju_unit)',
+            "refId": "StandardVariableQuery",
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": False,
+        "sort": 0,
+        "tagValuesQuery": "",
+        "tags": [],
+        "tagsQuery": "",
+        "type": "query",
+        "useTags": False,
+    },
+    {
+        "description": None,
+        "error": None,
+        "hide": 0,
+        "includeAll": False,
+        "label": None,
+        "multi": False,
+        "name": "prometheusds",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": False,
+        "type": "datasource",
+    },
+]
+
+REACTIVE_CONVERTER = {
+    "allValue": None,
+    "datasource": "${prometheusds}",
+    "definition": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid",juju_application="$juju_application"},host)',
+    "description": None,
+    "error": None,
+    "hide": 0,
+    "includeAll": False,
+    "label": "hosts",
+    "multi": True,
+    "name": "host",
+    "options": [],
+    "query": {
+        "query": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid",juju_application="$juju_application"},host)',
+        "refId": "StandardVariableQuery",
+    },
+    "refresh": 1,
+    "regex": "",
+    "skipUrlSync": False,
+    "sort": 1,
+    "tagValuesQuery": "",
+    "tags": [],
+    "tagsQuery": "",
+    "type": "query",
+    "useTags": False,
+}  # type: ignore
 
 
 class RelationNotFoundError(Exception):
@@ -210,6 +356,19 @@ def _encode_dashboard_content(content: Union[str, bytes]) -> str:
 
 def _decode_dashboard_content(encoded_content: str) -> str:
     return lzma.decompress(base64.b64decode(encoded_content.encode("utf-8"))).decode()
+
+
+def _inject_dashboard_dropdowns(content: str) -> str:
+    """Make sure dropdowns are present for Juju topology."""
+    dict_content = json.loads(content)
+    if "templating" not in content:
+        dict_content["templating"] = {"list": [d for d in TEMPLATE_DROPDOWNS]}
+    else:
+        for d in TEMPLATE_DROPDOWNS:
+            if d not in dict_content["templating"]["list"]:
+                dict_content["templating"]["list"].insert(0, d)
+
+    return json.dumps(dict_content)
 
 
 def _type_convert_stored(obj):
@@ -382,7 +541,7 @@ class GrafanaDashboardProvider(Object):
 
         encoded_dashboard = _encode_dashboard_content(content)
 
-        # Use as id the first chars of the encoded dashboard, so that its
+        # Use as id the first chars of the encoded dashboard, so that
         # it is predictable across units.
         id = f"prog:{encoded_dashboard[-24:-16]}"
         stored_dashboard_templates[id] = self._content_to_dashboard_object(encoded_dashboard)
@@ -627,7 +786,8 @@ class GrafanaDashboardConsumer(Object):
         """
         other_app = relation.app
 
-        if not (raw_data := relation.data[other_app].get("dashboards", {})):
+        raw_data = relation.data[other_app].get("dashboards", {})
+        if not raw_data:
             logger.warning(
                 "No dashboard data found in the %s:%s relation",
                 self._relation_name,
@@ -663,6 +823,7 @@ class GrafanaDashboardConsumer(Object):
             error = None
             try:
                 content = _encode_dashboard_content(Template(decoded_content).render())
+                content = _inject_dashboard_dropdowns(content)
             except TemplateSyntaxError as e:
                 error = str(e)
                 relation_has_invalid_dashboards = True
@@ -756,7 +917,7 @@ class GrafanaDashboardConsumer(Object):
 
 
 class GrafanaDashboardAggregator(Object):
-    """API to provide retrieve Grafana dashboards from machine dashboards.
+    """API to retrieve Grafana dashboards from machine dashboards.
 
     The :class:`GrafanaDashboardProvider` object provides a way to
     collate and aggregate Grafana dashboards from reactive/machine charms
@@ -776,10 +937,10 @@ class GrafanaDashboardAggregator(Object):
             :class:`GrafanaProvider` object. Generally this is
             `self` in the instantiating class.
         target_relation: a :string: name of a relation managed by this
-            :class:`GrafanaDashboardAggregator`; , which is used to communicate
+            :class:`GrafanaDashboardAggregator`, which is used to communicate
             with reactive/machine charms it defaults to "dashboards".
         grafana_relation: a :string: name of a relation used by this
-            :class:`GrafanaDashboardAggregator`; , which is used to communicate
+            :class:`GrafanaDashboardAggregator`, which is used to communicate
             with charmed grafana. It defaults to "downstream-grafana-dashboard"
     """
 
@@ -791,7 +952,7 @@ class GrafanaDashboardAggregator(Object):
         charm: CharmBase,
         target_relation: str = "dashboards",
         grafana_relation: str = "downstream-grafana-dashboard",
-    ) -> None:
+    ):
         super().__init__(charm, grafana_relation)
         self._stored.set_default(
             dashboard_templates={},
@@ -828,7 +989,7 @@ class GrafanaDashboardAggregator(Object):
 
         self._stored.id_mappings[event.app.name] = dashboards
 
-        for id in dashboards.keys():
+        for id in dashboards:
             self._stored.dashboard_templates[id] = self._content_to_dashboard_object(
                 dashboards[id], event
             )
@@ -847,7 +1008,7 @@ class GrafanaDashboardAggregator(Object):
         app_ids = _type_convert_stored(self._stored.id_mappings[event.app.name])
 
         del self._stored.id_mappings[event.app.name]
-        for id in app_ids.keys():
+        for id in app_ids:
             del self._stored.dashboard_templates[id]
 
         stored_data = {
@@ -857,6 +1018,39 @@ class GrafanaDashboardAggregator(Object):
 
         for grafana_relation in self.model.relations[self._grafana_relation]:
             grafana_relation.data[self._charm.app]["dashboards"] = json.dumps(stored_data)
+
+    # Yes, this has a fair amount of branching. It's not that complex, though
+    def _strip_existing_datasources(self, template: dict) -> dict:  # noqa: C901
+        """Remove existing reactive charm datasource templating out."""
+        dash = template["dashboard"]
+        try:
+            if "list" in dash["templating"]:
+                for i in range(len(dash["templating"]["list"])):
+                    if (
+                        "datasource" in dash["templating"]["list"][i]
+                        and "Juju" in dash["templating"]["list"][i]["datasource"]
+                    ):
+                        dash["templating"]["list"][i]["datasource"] = r"${prometheusds}"
+                    if (
+                        "name" in dash["templating"]["list"][i]
+                        and dash["templating"]["list"][i]["name"] == "host"
+                    ):
+                        dash["templating"]["list"][i] = REACTIVE_CONVERTER
+        except KeyError:
+            logger.debug("No existing templating data in dashboard")
+
+        if "__inputs" in dash:
+            inputs = dash
+            for i in range(len(dash["__inputs"])):
+                if dash["__inputs"][i]["pluginName"] == "Prometheus":
+                    del inputs["__inputs"][i]
+            if inputs:
+                dash["__inputs"] = inputs["__inputs"]
+            else:
+                del dash["__inputs"]
+
+        template["dashboard"] = dash
+        return template
 
     def _handle_reactive_dashboards(self, event: RelationEvent) -> Dict:
         """Look for a dashboard in relation data (during a reactive hook) or builtin by name."""
@@ -882,9 +1076,18 @@ class GrafanaDashboardAggregator(Object):
 
         dashboards = {}
         for t in templates:
+            # Replace values with LMA-style templating
+            t = self._strip_existing_datasources(t)
+
             # This seems ridiculous, too, but to get it from a "dashboards" key in serialized JSON
             # in the bucket back out to the actual "dashboard" we _need_, this is the way
-            dash = json.dumps(t)
+            # This is not a mistake -- there's a double nesting in reactive charms, and
+            # Grafana won't load it
+            dash = json.dumps(t["dashboard"])
+
+            # Replace the old-style datasource templates
+            dash = re.sub(r"<< datasource >>", r"${prometheusds}", dash)
+            dash = re.sub(r'"datasource": "prom.*?"', r'"datasource": "${prometheusds}"', dash)
 
             from jinja2 import Template
 
@@ -915,7 +1118,7 @@ class GrafanaDashboardAggregator(Object):
         if dashboards_path:
             for path in filter(Path.is_file, Path(dashboards_path).glob("*.tmpl")):
                 if event.app.name in path.name:
-                    id = f"file:{path.stem}"
+                    id = "file:{}".format(path.stem)
                     builtins[id] = self._content_to_dashboard_object(
                         _encode_dashboard_content(path.read_bytes()), event
                     )

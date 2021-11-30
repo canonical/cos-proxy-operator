@@ -17,8 +17,12 @@
 # Learn more at: https://juju.is/docs/sdk
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
+import base64
 import json
+import lzma
 import unittest
+import uuid
+from unittest.mock import patch
 
 from ops.model import BlockedStatus
 from ops.testing import Harness
@@ -60,12 +64,83 @@ RELABEL_INSTANCE_CONFIG = {
     "regex": "(.*)",
 }
 
-DASHBOARD_DUMMY_DATA_1 = {"request_12345678": json.dumps({"dashboard": "dummy_data_1"})}
+DASHBOARD_DUMMY_DATA_1 = {
+    "request_12345678": json.dumps(
+        {
+            "dashboard": {
+                "dashboard": {
+                    "__inputs": [
+                        {"pluginName": "Prometheus"},
+                    ],
+                    "templating": {
+                        "list": [
+                            {"datasource": "Juju data"},
+                        ],
+                    },
+                    "panels": {"data": "some_data_to_hash_across"},
+                },
+            },
+        }
+    )
+}
+
+DUMMY_FIXED_1 = {
+    "charm": "dashboard-app-1",
+    "content": '{"__inputs": [], "templating": {"list": [{"datasource": '
+    '"${prometheusds}"}]}, "panels": {"data": '
+    '"some_data_to_hash_across"}}',
+    "juju_topology": {
+        "application": "dashboard-app-1",
+        "model": "testmodel",
+        "model_uuid": "1234567890",
+        "unit": "dashboard-app-1/0",
+    },
+}
+
 DASHBOARD_DUMMY_DATA_2 = {
-    "request_87654321": json.dumps({"dashboard": "different_enough_to_rehash"})
+    "request_87654321": json.dumps(
+        {
+            "dashboard": {
+                "dashboard": {
+                    "templating": {
+                        "list": [
+                            {"name": "host"},
+                        ],
+                    },
+                    "panels": {"data": "different_enough_to_rehash"},
+                },
+            },
+        }
+    )
+}
+
+DUMMY_FIXED_2 = {
+    "charm": "dashboard-app-2",
+    "content": '{"templating": {"list": [{"allValue": null, "datasource": '
+    '"${prometheusds}", "definition": '
+    '"label_values(up{juju_model=\\"$juju_model\\",juju_model_uuid=\\"$juju_model_uuid\\",juju_application=\\"$juju_application\\"},host)", '
+    '"description": null, "error": null, "hide": 0, "includeAll": '
+    'false, "label": "hosts", "multi": true, "name": "host", '
+    '"options": [], "query": {"query": '
+    '"label_values(up{juju_model=\\"$juju_model\\",juju_model_uuid=\\"$juju_model_uuid\\",juju_application=\\"$juju_application\\"},host)", '
+    '"refId": "StandardVariableQuery"}, "refresh": 1, "regex": "", '
+    '"skipUrlSync": false, "sort": 1, "tagValuesQuery": "", "tags": '
+    '[], "tagsQuery": "", "type": "query", "useTags": false}]}, '
+    '"panels": {"data": "different_enough_to_rehash"}}',
+    "juju_topology": {
+        "application": "dashboard-app-2",
+        "model": "testmodel",
+        "model_uuid": "1234567890",
+        "unit": "dashboard-app-2/0",
+    },
 }
 
 
+@patch.object(lzma, "compress", new=lambda x, *args, **kwargs: x)
+@patch.object(lzma, "decompress", new=lambda x, *args, **kwargs: x)
+@patch.object(uuid, "uuid4", new=lambda: "12345678")
+@patch.object(base64, "b64encode", new=lambda x: x)
+@patch.object(base64, "b64decode", new=lambda x: x)
 class LMAProxyCharmTest(unittest.TestCase):
     def setUp(self):
         self.harness = Harness(LMAProxyCharm)
@@ -759,3 +834,31 @@ class LMAProxyCharmTest(unittest.TestCase):
         )
         dashboards = json.loads(grafana_rel_data.get("dashboards", "{}"))
         self.assertEqual(len(dashboards["templates"]), 2)
+
+    def test_dashboards_are_converted(self):
+        self.harness.set_leader(True)
+
+        grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "lma-grafana")
+        self.harness.add_relation_unit(grafana_rel_id, "lma-grafana/0")
+
+        target_rel_id_1 = self.harness.add_relation("dashboards", "dashboard-app-1")
+        self.harness.add_relation_unit(target_rel_id_1, "dashboard-app-1/0")
+        self.harness.update_relation_data(
+            target_rel_id_1, "dashboard-app-1/0", DASHBOARD_DUMMY_DATA_1
+        )
+
+        target_rel_id_2 = self.harness.add_relation("dashboards", "dashboard-app-2")
+        self.harness.add_relation_unit(target_rel_id_2, "dashboard-app-2/0")
+        self.harness.update_relation_data(
+            target_rel_id_2, "dashboard-app-2/0", DASHBOARD_DUMMY_DATA_2
+        )
+
+        grafana_rel_data = self.harness.get_relation_data(
+            grafana_rel_id, self.harness.model.app.name
+        )
+        dashboards = json.loads(grafana_rel_data.get("dashboards", "{}"))
+        self.assertEqual(len(dashboards["templates"]), 2)
+        self.maxDiff = None
+
+        self.assertEqual(dashboards["templates"]["prog:e_data_t"], DUMMY_FIXED_1)
+        self.assertEqual(dashboards["templates"]["prog:rent_eno"], DUMMY_FIXED_2)
