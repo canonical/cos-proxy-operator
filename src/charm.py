@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-#
 #  Copyright 2021 Canonical Ltd.
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,12 +14,19 @@
 #  limitations under the License.
 #
 # Learn more at: https://juju.is/docs/sdk
+"""This charm provides an interface between machine/reactive charms and LMA2 charms.
 
-"""Hello, Juju example charm.
+LMA2 is composed of Charmed Operators running in Kubernetes using the Operator Framework
+rather than Charms.Reactive. The purpose of this module is to provide a bridge between
+reactive charms and Charmed Operators to provide observability into both types of
+deployments from a single place -- LMA2.
 
-This charm is a demonstration of a machine charm written using the Charmed
-Operator Framework. It deploys a simple Python Flask web application and
-implements a relation to the PostgreSQL charm.
+Interfaces from LMA2 should be offered in Juju, and consumed by the appropriate model so
+relations can be established.
+
+Currently supported interfaces are for:
+    * Grafana dashboards
+    * Prometheus scrape targets
 """
 
 import logging
@@ -37,7 +42,12 @@ logger = logging.getLogger(__name__)
 
 
 class LMAProxyCharm(CharmBase):
-    """This charm provides an interface between machine/reactive charms and Charmed Operators."""
+    """This class instantiates Charmed Operator libraries and sets the status of the charm.
+
+    No actual work is performed by the charm payload. It is only the libraries which are
+    expected to listen on relations, respond to relation events, and set outgoing relation
+    data.
+    """
 
     _stored = StoredState()
 

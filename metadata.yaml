@@ -3,10 +3,10 @@
 name: lma-proxy
 
 description: |
-  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based LMA
+  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based LMA2
 
 summary: |
-  Single integration point in the machine world with Kubernetes-based LMA
+  Single integration point in the machine world with Kubernetes-based LMA2
 
 tags:
   - observability
