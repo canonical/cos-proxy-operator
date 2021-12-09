@@ -3,23 +3,30 @@
 name: lma-proxy
 
 description: |
-  This Juju machine charm that provides a single integration point in the machine world with the Kubernetes-based LMA
+  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based LMA2
 
 summary: |
-  Single integration point in the machine world with the Kubernetes-based LMA
+  Single integration point in the machine world with Kubernetes-based LMA2
 
 tags:
+  - observability
+  - lma
   - monitoring
   - logging
   - alerting
+  - grafana
 
 series:
   - focal
 provides:
   downstream-prometheus-scrape:
     interface: prometheus_scrape
+  downstream-grafana-dashboard:
+    interface: grafana_dashboard
 requires:
   prometheus-target:
     interface: http
   prometheus-rules:
     interface: prometheus-rules
+  dashboards:
+    interface: grafana-dashboard
