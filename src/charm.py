@@ -27,11 +27,21 @@ relations can be established.
 Currently supported interfaces are for:
     * Grafana dashboards
     * Prometheus scrape targets
+    * NRPE Endpoints
 """
 
 import logging
+import stat
+from pathlib import Path
 
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
+from charms.nrpe_exporter.v0.nrpe_exporter import NrpeExporterProvider
+from charms.operator_libs_linux.v1.systemd import (
+    daemon_reload,
+    service_restart,
+    service_running,
+    service_stop,
+)
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointAggregator
 from ops.charm import CharmBase
 from ops.framework import StoredState
@@ -55,7 +65,11 @@ class LMAProxyCharm(CharmBase):
         super().__init__(*args)
 
         self._stored.set_default(
-            have_grafana=False, have_dashboards=False, have_prometheus=False, have_targets=False
+            have_grafana=False,
+            have_dashboards=False,
+            have_prometheus=False,
+            have_targets=False,
+            have_nrpe=False,
         )
 
         self._dashboard_aggregator = GrafanaDashboardAggregator(self)
@@ -80,7 +94,7 @@ class LMAProxyCharm(CharmBase):
             self._downstream_grafana_dashboard_relation_broken,
         )
 
-        self._metrics_aggregator = MetricsEndpointAggregator(
+        self.metrics_aggregator = MetricsEndpointAggregator(
             self,
             {
                 "prometheus": "downstream-prometheus-scrape",
@@ -89,11 +103,13 @@ class LMAProxyCharm(CharmBase):
             },
         )
 
+        self.nrpe_exporter = NrpeExporterProvider(self)
+        self.framework.observe(self.nrpe_exporter.on.nrpe_targets_changed, self._forward_nrpe)
+
         self.framework.observe(
             self.on.prometheus_target_relation_joined,
             self._prometheus_target_relation_joined,
         )
-
         self.framework.observe(
             self.on.prometheus_target_relation_broken,
             self._prometheus_target_relation_broken,
@@ -103,11 +119,28 @@ class LMAProxyCharm(CharmBase):
             self.on.downstream_prometheus_scrape_relation_joined,
             self._downstream_prometheus_scrape_relation_joined,
         )
-
         self.framework.observe(
             self.on.downstream_prometheus_scrape_relation_broken,
             self._downstream_prometheus_scrape_relation_broken,
         )
+
+        self.framework.observe(self.on.monitors_relation_joined, self._nrpe_relation_joined)
+        self.framework.observe(self.on.monitors_relation_broken, self._nrpe_relation_broken)
+
+        self.framework.observe(self.on.local_monitors_relation_joined, self._nrpe_relation_joined)
+        self.framework.observe(self.on.local_monitors_relation_broken, self._nrpe_relation_broken)
+
+        self.framework.observe(self.on.juju_info_relation_joined, self._nrpe_relation_joined)
+        self.framework.observe(self.on.juju_info_relation_broken, self._nrpe_relation_broken)
+
+        self.framework.observe(
+            self.on.nrpe_external_master_relation_joined, self._nrpe_relation_joined
+        )
+        self.framework.observe(
+            self.on.nrpe_external_master_relation_broken, self._nrpe_relation_broken
+        )
+
+        self.framework.observe(self.on.stop, self._on_stop)
 
         self._set_status()
 
@@ -117,6 +150,56 @@ class LMAProxyCharm(CharmBase):
 
     def _dashboards_relation_broken(self, _):
         self._stored.have_dashboards = False
+        self._set_status()
+
+    def _on_stop(self, _):
+        """Ensure that nrpe exporter is removed and stopped."""
+        if service_running("nrpe-exporter"):
+            service_stop("nrpe-exporter")
+
+        files = ["/usr/local/bin/nrpe_exporter", "/etc/systemd/systemd/nrpe-exporter.service"]
+
+        for f in files:
+            if Path(f).exists():
+                Path(f).unlink()
+
+    def _nrpe_relation_joined(self, _):
+        self._stored.have_nrpe = True
+
+        # Make sure the exporter binary is present with a systemd service
+        if not Path("/usr/local/bin/nrpe_exporter").exists():
+            with open(self.model.resources.fetch("nrpe-exporter"), "rb") as f:
+                with open("/usr/local/bin/nrpe_exporter", "wb") as g:
+                    chunk_size = 4096
+                    chunk = f.read(chunk_size)
+                    while len(chunk) > 0:
+                        g.write(chunk)
+                        chunk = f.read(chunk_size)
+
+            st = Path("/usr/local/bin/nrpe_exporter")
+            st.chmod(st.stat().st_mode | stat.S_IEXEC)
+
+            systemd_template = """
+                [Unit]
+                Description=NRPE Prometheus exporter
+
+                [Service]
+                ExecStart=/usr/local/bin/nrpe_exporter
+
+                [Install]
+                WantedBy=multi-user.target
+            """
+
+            with open("/etc/systemd/system/nrpe-exporter.service", "w") as f:
+                f.write(systemd_template)
+
+            daemon_reload()
+            service_restart("nrpe-exporter.service")
+
+        self._set_status()
+
+    def _nrpe_relation_broken(self, _):
+        self._stored.have_nrpe = False
         self._set_status()
 
     def _downstream_grafana_dashboard_relation_joined(self, _):
@@ -142,6 +225,15 @@ class LMAProxyCharm(CharmBase):
     def _downstream_prometheus_scrape_relation_broken(self, _):
         self._stored.have_prometheus = False
         self._set_status()
+
+    def _forward_nrpe(self, _):
+        """Send NRPE jobs over to MetricsEndpointAggregator."""
+        nrpes = self.nrpe_exporter.endpoints()
+
+        for nrpe in nrpes:
+            self.metrics_aggregator.set_target_job_data(
+                nrpe["target"], nrpe["app_name"], nrpe["additional_target_fields"]
+            )
 
     def _set_status(self):
         message = ""
