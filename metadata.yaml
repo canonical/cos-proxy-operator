@@ -38,8 +38,8 @@ requires:
     interface: grafana_dashboard
   nrpe-external-master:
     interface: nrpe_external_master
-  juju-info:
-    interface: juju_info
+  general-info:
+    interface: general_info
   monitors:
     interface: monitors
   local-monitors:
