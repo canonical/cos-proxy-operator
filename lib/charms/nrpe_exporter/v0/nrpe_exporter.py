@@ -27,7 +27,7 @@ consumed and sent through the Prometheus relation, by responding to
 import json
 from json.decoder import JSONDecodeError
 import logging
-from typing import Dict, Optional
+from typing import Any, Optional
 
 import yaml
 from ops.charm import CharmBase, RelationEvent, RelationRole
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RELATION_NAMES = {
     "nrpe-external-master": "nrpe_external_master",
-    "juju-info": "juju_info",
+    "general-info": "general_info",
     "monitors": "monitors",
     "local-monitors": "local_monitors",
 }
@@ -161,6 +161,21 @@ def _validate_relation_by_interface_and_direction(
         raise Exception("Unexpected RelationDirection: {}".format(expected_relation_role))
 
 
+def find_key(d: dict, key: str) -> Any:
+    """Finds a key nested arbitrarily deeply inside a dictself.
+
+    Principally useful since the structure of NRPE relation data is
+    not completely reliable."""
+    if key in d:
+        return d[key]
+    for child in d.values():
+        if not isinstance(child, dict):
+            continue
+        val = find_key(child, key)
+        if val:
+            return val
+
+
 class NrpeTargetsChangedEvent(EventBase):
     """Event emitted when NRPE Exporter targets change."""
 
@@ -245,7 +260,7 @@ class NrpeExporterProvider(Object):
 
         for relation_name in self._relation_names.keys():
             for relation in self._charm.model.relations[relation_name]:
-                nrpe_endpoints.extend(self._nrpe_scrape_config(relation))
+                nrpe_endpoints.extend(self._nrpe_endpoint_config(relation))
 
         return nrpe_endpoints
 
@@ -304,38 +319,83 @@ class NrpeExporterProvider(Object):
 
         nrpe_endpoints = []
 
+        exporter_address = self.charm.model.get_binding(relation).network.bind_address
+
         for unit in relation.units:
             monitors = relation.data[unit].get("monitors", "")
-            try:
-                monitor_data = json.loads(monitors)
-            except JSONDecodeError:
-                logger.debug("No JSON data found in the relation. Trying yaml...")
-            try:
-                monitor_data = yaml.safe_load(monitors)
-            except yaml.YAMLError:
-                logger.warning("NRPE monitor field did not have JSON or YAML. Skipping!")
+            if isinstance(monitors, str):
+                try:
+                    monitor_data = json.loads(monitors)
+                except JSONDecodeError:
+                    logger.debug("No JSON data found in the relation. Trying yaml...")
+                try:
+                    monitor_data = yaml.safe_load(monitors)
+                except yaml.YAMLError:
+                    logger.warning("NRPE monitor string did not have JSON or YAML. Skipping")
+                    continue
+            elif isinstance(monitors, dict):
+                monitor_data = monitors
+            else:
+                logger.warning("Received monitor data with an unknown format. Skipping.")
+
+            if not monitor_data:
                 continue
 
-            for val in monitor_data["remote"]["nrpe"].values():
-                cmd = ""
+            logger.info("GOT mon: {}".format(monitor_data))
+            jobs = find_key(monitor_data, "nrpe")
+            for val in jobs.values():
                 if isinstance(val, str):
                     cmd = val
                 else:
-                    cmd = val.values()[0]
+                    cmd = next(iter(val.values()))
+
+                # IP address could be 'target-address' OR 'target_address'
+                addr = relation.data[unit].get("target-address", "") or relation.data[unit].get(
+                    "target_address", ""
+                )
+                # Same for the target ID
+                id = relation.data[unit].get("target-id", "") or relation.data[unit].get(
+                    "target_id", ""
+                )
 
                 job_config = {
-                    "app_name": "{}_{}".format(unit.name, cmd),
+                    "app_name": relation.app.name,
                     "target": {
-                        "hostname": relation.data[unit].get("target-address", ""),
-                        "port": "5666",
+                        unit.name: {
+                            "hostname": addr,
+                            "port": "5666",
+                        },
                     },
-                    "additional_target_fields": {
-                        "params": {
-                            "command": [cmd],
-                            "ssl": [True],
-                        }
+                    "additional_fields": {
+                        "relabel_configs": [
+                            {"source_labels": ["__address__"], "target_label": "__param_target"},
+                            {"source_labels": ["__param_target"], "target_label": "instance"},
+                            {
+                                "target_label": "__address_",
+                                "replacement": "{}:9275".format(exporter_address),
+                            },
+                        ],
+                        "updates": {
+                            "params": {
+                                "command": [cmd],
+                                "ssl": [True],
+                            },
+                            # Override job_name with something specific to the NRPE job
+                            # and the unit it's coming from.
+                            #
+                            # relation.data[unit]["target-id"] contains the monitored
+                            # charm, as `juju-{appname}-{unit_number}
+                            "job_name": "juju_{}_{}_{}_{}_prometheus_scrape".format(
+                                self.model.name,
+                                self.model.uuid[:7],
+                                id.replace("juju-", "", 1).replace("-", "_"),
+                                cmd,
+                            ),
+                        },
                     },
                 }
+
+                logger.info("SETTING job_config: {}".format(job_config))
 
                 nrpe_endpoints.append(job_config)
 

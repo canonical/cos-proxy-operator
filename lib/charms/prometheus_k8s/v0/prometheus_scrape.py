@@ -1669,7 +1669,7 @@ class MetricsEndpointAggregator(Object):
         self.set_target_job_data(targets, event.relation.app.name)
 
     def set_target_job_data(
-        self, targets: dict, app_name: str, additional_target_fields: Optional[dict] = None
+        self, targets: dict, app_name: str, additional_fields: Optional[dict] = None
     ) -> None:
         """Update scrape jobs in response to scrape target changes.
 
@@ -1681,11 +1681,11 @@ class MetricsEndpointAggregator(Object):
         Args:
             target: a `dict` containing target information
             app_name: a `str` identifying the application
-            additional_target_fields: an optional `dict` containing extra annotations
+            additional_fields: an optional `dict` containing extra annotations
               to be added to the job configuration
         """
         # new scrape job for the relation that has changed
-        updated_job = self._static_scrape_job(targets, app_name, additional_target_fields)
+        updated_job = self._static_scrape_job(targets, app_name, additional_fields)
 
         for relation in self.model.relations[self._prometheus_relation]:
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
@@ -1918,7 +1918,7 @@ class MetricsEndpointAggregator(Object):
         return labeled_rules
 
     def _static_scrape_job(
-        self, targets: dict, application_name: str, additional_target_fields: Optional[dict] = None
+        self, targets: dict, application_name: str, additional_fields: Optional[dict] = None
     ) -> dict:
         """Construct a static scrape job for an application.
 
@@ -1930,7 +1930,7 @@ class MetricsEndpointAggregator(Object):
                 "port".
             application_name: a string name of the application for
                 which this static scrape job is being constructed.
-            additional_target_fields: an optional dict containing
+            additional_fields: an optional dict containing
                 extra fields to add to the job, used primarily by
                 NRPE
 
@@ -1940,6 +1940,7 @@ class MetricsEndpointAggregator(Object):
             dictionary may be transformed into YAML and appended to
             the list of any existing list of Prometheus static configs.
         """
+        additional_fields = additional_fields or {}
         juju_model = self.model.name
         juju_model_uuid = self.model.uuid
         job = {
@@ -1957,9 +1958,10 @@ class MetricsEndpointAggregator(Object):
                 }
                 for unit_name, target in targets.items()
             ],
-            "relabel_configs": self._relabel_configs,
+            "relabel_configs": self._relabel_configs
+            + additional_fields.get("relabel_configs", []),
         }
-        job.update(additional_target_fields if additional_target_fields else {})
+        job.update(additional_fields.get("updates", {}))
 
         return job
 
