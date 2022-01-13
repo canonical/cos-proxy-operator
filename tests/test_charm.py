@@ -162,7 +162,7 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Prometheus|target) relation(s)"),
+            BlockedStatus("Missing one of (Prometheus|target|nrpe) relation(s)"),
         )
 
     def test_prometheus_relation_without_scrape_target_blocks(self):
@@ -175,7 +175,7 @@ class LMAProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Prometheus|target) relation(s)"),
+            BlockedStatus("Missing one of (Prometheus|target|nrpe) relation(s)"),
         )
 
     def test_grafana_relation_without_dashboards_blocks(self):

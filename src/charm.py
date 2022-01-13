@@ -130,8 +130,8 @@ class LMAProxyCharm(CharmBase):
         self.framework.observe(self.on.local_monitors_relation_joined, self._nrpe_relation_joined)
         self.framework.observe(self.on.local_monitors_relation_broken, self._nrpe_relation_broken)
 
-        self.framework.observe(self.on.juju_info_relation_joined, self._nrpe_relation_joined)
-        self.framework.observe(self.on.juju_info_relation_broken, self._nrpe_relation_broken)
+        self.framework.observe(self.on.general_info_relation_joined, self._nrpe_relation_joined)
+        self.framework.observe(self.on.general_info_relation_broken, self._nrpe_relation_broken)
 
         self.framework.observe(
             self.on.nrpe_external_master_relation_joined, self._nrpe_relation_joined
@@ -232,7 +232,7 @@ class LMAProxyCharm(CharmBase):
 
         for nrpe in nrpes:
             self.metrics_aggregator.set_target_job_data(
-                nrpe["target"], nrpe["app_name"], nrpe["additional_target_fields"]
+                nrpe["target"], nrpe["app_name"], nrpe["additional_fields"]
             )
 
     def _set_status(self):
@@ -242,10 +242,16 @@ class LMAProxyCharm(CharmBase):
         ):
             message = " one of (Grafana|dashboard) relation(s) "
 
-        if (self._stored.have_prometheus and not self._stored.have_targets) or (
-            self._stored.have_targets and not self._stored.have_prometheus
+        if (
+            self._stored.have_prometheus
+            and not (self._stored.have_targets or self._stored.have_nrpe)
+        ) or (
+            (self._stored.have_targets or self._stored.have_nrpe)
+            and not self._stored.have_prometheus
         ):
-            message += "{} one of (Prometheus|target) relation(s)".format("and" if message else "")
+            message += "{} one of (Prometheus|target|nrpe) relation(s)".format(
+                "and" if message else ""
+            )
 
         message = "Missing {}".format(message.strip()) if message else ""
 
