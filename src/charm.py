@@ -180,14 +180,14 @@ class LMAProxyCharm(CharmBase):
             st.chmod(st.stat().st_mode | stat.S_IEXEC)
 
             systemd_template = """
-                [Unit]
-                Description=NRPE Prometheus exporter
+[Unit]
+Description=NRPE Prometheus exporter
 
-                [Service]
-                ExecStart=/usr/local/bin/nrpe_exporter
+[Service]
+ExecStart=/usr/local/bin/nrpe_exporter
 
-                [Install]
-                WantedBy=multi-user.target
+[Install]
+WantedBy=multi-user.target
             """
 
             with open("/etc/systemd/system/nrpe-exporter.service", "w") as f:

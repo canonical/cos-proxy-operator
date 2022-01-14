@@ -48,10 +48,10 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_RELATION_NAMES = {
-    "nrpe-external-master": "nrpe_external_master",
-    "general-info": "general_info",
+    "nrpe-external-master": "nrpe-external-master",
+    "general-info": "general-info",
     "monitors": "monitors",
-    "local-monitors": "local_monitors",
+    "local-monitors": "local-monitors",
 }
 
 
@@ -319,7 +319,7 @@ class NrpeExporterProvider(Object):
 
         nrpe_endpoints = []
 
-        exporter_address = self.charm.model.get_binding(relation).network.bind_address
+        exporter_address = self._charm.model.get_binding(relation).network.bind_address
 
         for unit in relation.units:
             monitors = relation.data[unit].get("monitors", "")
@@ -341,7 +341,6 @@ class NrpeExporterProvider(Object):
             if not monitor_data:
                 continue
 
-            logger.info("GOT mon: {}".format(monitor_data))
             jobs = find_key(monitor_data, "nrpe")
             for val in jobs.values():
                 if isinstance(val, str):
@@ -394,8 +393,6 @@ class NrpeExporterProvider(Object):
                         },
                     },
                 }
-
-                logger.info("SETTING job_config: {}".format(job_config))
 
                 nrpe_endpoints.append(job_config)
 
