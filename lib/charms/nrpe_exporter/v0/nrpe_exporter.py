@@ -48,10 +48,8 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_RELATION_NAMES = {
-    "nrpe-external-master": "nrpe-external-master",
     "general-info": "general-info",
     "monitors": "monitors",
-    "local-monitors": "local-monitors",
 }
 
 

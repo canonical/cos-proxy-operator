@@ -127,18 +127,8 @@ class LMAProxyCharm(CharmBase):
         self.framework.observe(self.on.monitors_relation_joined, self._nrpe_relation_joined)
         self.framework.observe(self.on.monitors_relation_broken, self._nrpe_relation_broken)
 
-        self.framework.observe(self.on.local_monitors_relation_joined, self._nrpe_relation_joined)
-        self.framework.observe(self.on.local_monitors_relation_broken, self._nrpe_relation_broken)
-
         self.framework.observe(self.on.general_info_relation_joined, self._nrpe_relation_joined)
         self.framework.observe(self.on.general_info_relation_broken, self._nrpe_relation_broken)
-
-        self.framework.observe(
-            self.on.nrpe_external_master_relation_joined, self._nrpe_relation_joined
-        )
-        self.framework.observe(
-            self.on.nrpe_external_master_relation_broken, self._nrpe_relation_broken
-        )
 
         self.framework.observe(self.on.stop, self._on_stop)
 

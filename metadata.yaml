@@ -36,11 +36,7 @@ requires:
     interface: prometheus-rules
   dashboards:
     interface: grafana-dashboard
-  nrpe-external-master:
-    interface: nrpe-external-master
   general-info:
     interface: general-info
   monitors:
     interface: monitors
-  local-monitors:
-    interface: local-monitors

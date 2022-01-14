@@ -4,6 +4,12 @@ This Juju machine charm that provides a single integration point in the machine 
 
 This charm is designed to be easy to integrate in bundles and Juju-driven appliances, and reduce the amount of setup needed to integrate with the Kubernetes-based LMA to just connect the LMA Proxy charm with it.
 
+Proxying support is provided for:
+
+* Prometheus
+* Grafana Dashboards
+* NRPE (through [nrpe_exporter](https://github.com/canonical/nrpe_exporter), which sends NRPE results to Prometheus
+
 ## Deployment
 
 The lma-proxy charm is used as a connector between a Juju model hosting
@@ -53,7 +59,7 @@ juju offer lma.prometheus:prometheus_scrape
 Deploy the lma-proxy charm in a new machine unit on the target model:
 
 ```
-juju deploy -m reactive lma-proxy  # or ./lma-proxy_ubuntu-20.04-amd64.charm
+juju deploy -m reactive lma-proxy  # or ./lma-proxy_ubuntu-20.04-amd64.charm --resource nrpe-exporter=./nrpe_exporter
 juju relate -m reactive telegraf:prometheus-client lma-proxy:prometheus-target
 juju relate -m reactive telegraf:prometheus-rules lma-proxy:prometheus-rules
 ```
@@ -82,3 +88,14 @@ juju consume -m reactive lma.grafana
 juju relate -m reactive prometheus lma-proxy:downstream-prometheus-scrape
 juju relate -m reactive grafana lma-proxy:downstream-grafana-dashboards
 ```
+
+## NRPE Exporting
+
+The `nrpe_exporter` binary used as a resource can be built from the [nrpe_exporter](https://github.com/canonical/nrpe_exporter)
+repository by cloning and running `make`. `docker` is a build dependency, since `nrpe_exporter` (and `nrpe` itself)
+use older SSL ciphers, and a connection cannot be negotiated in pure Go.
+
+NRPE targets may appear on multiple relations. To capture all jobs, `lma-proxy` should be related to
+**BOTH** an existing reactive NRPE subordinate charm, as well as the application which that charm is subordinated to,
+as the `monitors` interface may appear on either, with the principal charm providing "host-level" checks, and
+the subordinate `nrpe` providing application-level ones.
