@@ -3,10 +3,10 @@
 name: lma-proxy
 
 description: |
-  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based LMA2
+  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based COS
 
 summary: |
-  Single integration point in the machine world with Kubernetes-based LMA2
+  Single integration point in the machine world with Kubernetes-based COS
 
 tags:
   - observability
@@ -15,9 +15,15 @@ tags:
   - logging
   - alerting
   - grafana
+  - nrpe
 
 series:
   - focal
+resources:
+  nrpe-exporter:
+    type: file
+    filename: nrpe_exporter
+    description: NRPE prometheus exporter
 provides:
   downstream-prometheus-scrape:
     interface: prometheus_scrape
@@ -30,3 +36,7 @@ requires:
     interface: prometheus-rules
   dashboards:
     interface: grafana-dashboard
+  general-info:
+    interface: general-info
+  monitors:
+    interface: monitors
