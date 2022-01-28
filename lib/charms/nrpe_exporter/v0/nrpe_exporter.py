@@ -25,8 +25,8 @@ consumed and sent through the Prometheus relation, by responding to
 """
 
 import json
-from json.decoder import JSONDecodeError
 import logging
+from json.decoder import JSONDecodeError
 from typing import Any, Optional
 
 import yaml
@@ -163,7 +163,8 @@ def find_key(d: dict, key: str) -> Any:
     """Finds a key nested arbitrarily deeply inside a dictself.
 
     Principally useful since the structure of NRPE relation data is
-    not completely reliable."""
+    not completely reliable.
+    """
     if key in d:
         return d[key]
     for child in d.values():

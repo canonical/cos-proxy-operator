@@ -2022,7 +2022,9 @@ class MetricsEndpointAggregator(Object):
 
         return labeled_rules
 
-    def _static_scrape_job(self, targets, application_name, additional_fields: Optional[dict] = None) -> dict:
+    def _static_scrape_job(
+        self, targets, application_name, additional_fields: Optional[dict] = None
+    ) -> dict:
         """Construct a static scrape job for an application.
 
         Args:
@@ -2061,10 +2063,10 @@ class MetricsEndpointAggregator(Object):
                 }
                 for unit_name, target in targets.items()
             ],
-            "relabel_configs": self._relabel_configs + additional_fields.get("relabel_configs", []),
+            "relabel_configs": self._relabel_configs
+            + additional_fields.get("relabel_configs", []),
         }
         job.update(additional_fields.get("updates", {}))
-
 
         return job
 
