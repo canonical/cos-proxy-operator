@@ -14,14 +14,14 @@
 #  limitations under the License.
 #
 # Learn more at: https://juju.is/docs/sdk
-"""This charm provides an interface between machine/reactive charms and LMA2 charms.
+"""This charm provides an interface between machine/reactive charms and COS charms.
 
-LMA2 is composed of Charmed Operators running in Kubernetes using the Operator Framework
+COS is composed of Charmed Operators running in Kubernetes using the Operator Framework
 rather than Charms.Reactive. The purpose of this module is to provide a bridge between
 reactive charms and Charmed Operators to provide observability into both types of
-deployments from a single place -- LMA2.
+deployments from a single place -- COS.
 
-Interfaces from LMA2 should be offered in Juju, and consumed by the appropriate model so
+Interfaces from COS should be offered in Juju, and consumed by the appropriate model so
 relations can be established.
 
 Currently supported interfaces are for:
@@ -32,6 +32,7 @@ Currently supported interfaces are for:
 
 import logging
 import stat
+import textwrap
 from pathlib import Path
 
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
@@ -51,7 +52,7 @@ from ops.model import ActiveStatus, BlockedStatus
 logger = logging.getLogger(__name__)
 
 
-class LMAProxyCharm(CharmBase):
+class COSProxyCharm(CharmBase):
     """This class instantiates Charmed Operator libraries and sets the status of the charm.
 
     No actual work is performed by the charm payload. It is only the libraries which are
@@ -169,16 +170,18 @@ class LMAProxyCharm(CharmBase):
             st = Path("/usr/local/bin/nrpe_exporter")
             st.chmod(st.stat().st_mode | stat.S_IEXEC)
 
-            systemd_template = """
-[Unit]
-Description=NRPE Prometheus exporter
+            systemd_template = textwrap.dedent(
+                """
+                [Unit]
+                Description=NRPE Prometheus exporter
 
-[Service]
-ExecStart=/usr/local/bin/nrpe_exporter
+                [Service]
+                ExecStart=/usr/local/bin/nrpe_exporter
 
-[Install]
-WantedBy=multi-user.target
-            """
+                [Install]
+                WantedBy=multi-user.target
+                """
+            )
 
             with open("/etc/systemd/system/nrpe-exporter.service", "w") as f:
                 f.write(systemd_template)
@@ -210,6 +213,8 @@ WantedBy=multi-user.target
 
     def _downstream_prometheus_scrape_relation_joined(self, _):
         self._stored.have_prometheus = True
+        if self._stored.have_nrpe:
+            self._forward_nrpe(None)
         self._set_status()
 
     def _downstream_prometheus_scrape_relation_broken(self, _):
@@ -252,4 +257,4 @@ WantedBy=multi-user.target
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main(LMAProxyCharm)
+    main(COSProxyCharm)

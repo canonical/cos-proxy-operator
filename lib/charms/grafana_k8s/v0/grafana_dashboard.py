@@ -20,7 +20,6 @@ from ops.charm import (
     RelationChangedEvent,
     RelationCreatedEvent,
     RelationEvent,
-    RelationMeta,
     RelationRole,
 )
 from ops.framework import (
@@ -168,7 +167,7 @@ TEMPLATE_DROPDOWNS = [
     },
 ]
 
-REACTIVE_CONVERTER = {
+REACTIVE_CONVERTER = {  # type: ignore
     "allValue": None,
     "datasource": "${prometheusds}",
     "definition": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid",juju_application="$juju_application"},host)',
@@ -193,7 +192,7 @@ REACTIVE_CONVERTER = {
     "tagsQuery": "",
     "type": "query",
     "useTags": False,
-}  # type: ignore
+}
 
 
 class RelationNotFoundError(Exception):
@@ -201,7 +200,7 @@ class RelationNotFoundError(Exception):
 
     def __init__(self, relation_name: str):
         self.relation_name = relation_name
-        self.message = f"No relation named '{relation_name}' found"
+        self.message = "No relation named '{}' found".format(relation_name)
 
         super().__init__(self.message)
 
@@ -219,8 +218,10 @@ class RelationInterfaceMismatchError(Exception):
         self.expected_relation_interface = expected_relation_interface
         self.actual_relation_interface = actual_relation_interface
         self.message = (
-            f"The '{relation_name}' relation has '{actual_relation_interface}' as "
-            f"interface rather than the expected '{expected_relation_interface}'"
+            "The '{}' relation has '{}' as "
+            "interface rather than the expected '{}'".format(
+                relation_name, actual_relation_interface, expected_relation_interface
+            )
         )
 
         super().__init__(self.message)
@@ -238,9 +239,8 @@ class RelationRoleMismatchError(Exception):
         self.relation_name = relation_name
         self.expected_relation_interface = expected_relation_role
         self.actual_relation_role = actual_relation_role
-        self.message = (
-            f"The '{relation_name}' relation has role '{repr(actual_relation_role)}' "
-            f"rather than the expected '{repr(expected_relation_role)}'"
+        self.message = "The '{}' relation has role '{}' rather than the expected '{}'".format(
+            relation_name, repr(actual_relation_role), repr(expected_relation_role)
         )
 
         super().__init__(self.message)
@@ -271,7 +271,7 @@ def _resolve_dir_against_charm_path(charm: CharmBase, *path_elements: str) -> st
         InvalidDirectoryPathError if the resolved path does not exist or it is not a directory
 
     """
-    charm_dir = Path(charm.charm_dir)
+    charm_dir = Path(str(charm.charm_dir))
     if not charm_dir.exists() or not charm_dir.is_dir():
         # Operator Framework does not currently expose a robust
         # way to determine the top level charm source directory
@@ -325,7 +325,7 @@ def _validate_relation_by_interface_and_direction(
     if relation_name not in charm.meta.relations:
         raise RelationNotFoundError(relation_name)
 
-    relation: RelationMeta = charm.meta.relations[relation_name]
+    relation = charm.meta.relations[relation_name]
 
     actual_relation_interface = relation.interface_name
     if actual_relation_interface != expected_relation_interface:
@@ -344,7 +344,7 @@ def _validate_relation_by_interface_and_direction(
                 relation_name, RelationRole.requires, RelationRole.provides
             )
     else:
-        raise Exception(f"Unexpected RelationDirection: {expected_relation_role}")
+        raise Exception("Unexpected RelationDirection: {}".format(expected_relation_role))
 
 
 def _encode_dashboard_content(content: Union[str, bytes]) -> str:
@@ -499,6 +499,7 @@ class GrafanaDashboardProvider(Object):
             charm, relation_name, RELATION_INTERFACE_NAME, RelationRole.provides
         )
 
+        dashboards_path = ""
         try:
             dashboards_path = _resolve_dir_against_charm_path(charm, dashboards_path)
         except InvalidDirectoryPathError as e:
@@ -543,7 +544,7 @@ class GrafanaDashboardProvider(Object):
 
         # Use as id the first chars of the encoded dashboard, so that
         # it is predictable across units.
-        id = f"prog:{encoded_dashboard[-24:-16]}"
+        id = "prog:{}".format(encoded_dashboard[-24:-16])
         stored_dashboard_templates[id] = self._content_to_dashboard_object(encoded_dashboard)
 
         if self._charm.unit.is_leader():
@@ -559,6 +560,7 @@ class GrafanaDashboardProvider(Object):
         for dashboard_id in list(stored_dashboard_templates.keys()):
             if dashboard_id.startswith("prog:"):
                 del stored_dashboard_templates[dashboard_id]
+        self._stored.dashboard_templates = stored_dashboard_templates
 
         if self._charm.unit.is_leader():
             for dashboard_relation in self._charm.model.relations[self._relation_name]:
@@ -570,7 +572,7 @@ class GrafanaDashboardProvider(Object):
             for dashboard_relation in self._charm.model.relations[self._relation_name]:
                 self._upset_dashboards_on_relation(dashboard_relation)
 
-    def _update_all_dashboards_from_dir(self, _: HookEvent) -> None:
+    def _update_all_dashboards_from_dir(self, _: Optional[HookEvent] = None) -> None:
         """Scans the built-in dashboards and updates relations with changes."""
         # Update of storage must be done irrespective of leadership, so
         # that the stored state is there when this unit becomes leader.
@@ -585,11 +587,41 @@ class GrafanaDashboardProvider(Object):
                     del stored_dashboard_templates[dashboard_id]
 
             for path in filter(Path.is_file, Path(self._dashboards_path).glob("*.tmpl")):
-                id = f"file:{path.stem}"
+                id = "file:{}".format(path.stem)
                 stored_dashboard_templates[id] = self._content_to_dashboard_object(
                     _encode_dashboard_content(path.read_bytes())
                 )
 
+            self._stored.dashboard_templates = stored_dashboard_templates
+
+            if self._charm.unit.is_leader():
+                for dashboard_relation in self._charm.model.relations[self._relation_name]:
+                    self._upset_dashboards_on_relation(dashboard_relation)
+
+    def _reinitialize_dashboard_data(self) -> None:
+        """Triggers a reload of dashboard outside of an eventing workflow.
+
+        This will destroy any existing relation data.
+        """
+        try:
+            _resolve_dir_against_charm_path(self._charm, self._dashboards_path)
+            self._update_all_dashboards_from_dir()
+
+        except InvalidDirectoryPathError as e:
+            logger.warning(
+                "Invalid Grafana dashboards folder at %s: %s",
+                e.grafana_dashboards_absolute_path,
+                e.message,
+            )
+            stored_dashboard_templates = self._stored.dashboard_templates
+
+            for dashboard_id in list(stored_dashboard_templates.keys()):
+                if dashboard_id.startswith("file:"):
+                    del stored_dashboard_templates[dashboard_id]
+            self._stored.dashboard_templates = stored_dashboard_templates
+
+            # With all of the file-based dashboards cleared out, force a refresh
+            # of relation data
             if self._charm.unit.is_leader():
                 for dashboard_relation in self._charm.model.relations[self._relation_name]:
                     self._upset_dashboards_on_relation(dashboard_relation)
@@ -790,6 +822,7 @@ class GrafanaDashboardConsumer(Object):
         other_app = relation.app
 
         raw_data = relation.data[other_app].get("dashboards", {})
+
         if not raw_data:
             logger.warning(
                 "No dashboard data found in the %s:%s relation",
@@ -805,8 +838,8 @@ class GrafanaDashboardConsumer(Object):
 
         # Import only if a charmed operator uses the consumer, we don't impose these
         # dependencies on the client
-        from jinja2 import Template
-        from jinja2.exceptions import TemplateSyntaxError
+        from jinja2 import Template  # type: ignore
+        from jinja2.exceptions import TemplateSyntaxError  # type: ignore
 
         # The dashboards are WAY too big since this ultimately calls out to Juju to
         # set the relation data, and it overflows the maximum argument length for
@@ -836,7 +869,7 @@ class GrafanaDashboardConsumer(Object):
             # the same ids inside their charm operators
             rendered_dashboards.append(
                 {
-                    "id": f"{relation.name}:{relation.id}/{fname}",
+                    "id": "{}:{}/{}".format(relation.name, relation.id, fname),
                     "original_id": fname,
                     "content": content if content else None,
                     "template": template,
@@ -922,13 +955,20 @@ class GrafanaDashboardConsumer(Object):
 class GrafanaDashboardAggregator(Object):
     """API to retrieve Grafana dashboards from machine dashboards.
 
-    The :class:`GrafanaDashboardProvider` object provides a way to
+    The :class:`GrafanaDashboardAggregator` object provides a way to
     collate and aggregate Grafana dashboards from reactive/machine charms
     and transport them into Charmed Operators, using Juju topology.
 
     For detailed usage instructions, see the documentation for
     :module:`lma-proxy-operator`, as this class is intended for use as a
     single point of intersection rather than use in individual charms.
+
+    Since :class:`GrafanaDashboardAggregator` serves as a bridge between
+    Canonical Observability Stack Charmed Operators and Reactive Charms,
+    deployed in a Reactive Juju model, both a target relation which is
+    used to collect events from Reactive charms and a `grafana_relation`
+    which is used to send the collected data back to the Canonical
+    Observability Stack are required.
 
     In its most streamlined usage, :class:`GrafanaDashboardAggregator` is
     integrated in a charmed operator as follows:
@@ -967,6 +1007,14 @@ class GrafanaDashboardAggregator(Object):
         self._grafana_relation = grafana_relation
 
         self.framework.observe(
+            self._charm.on[self._grafana_relation].relation_joined,
+            self._update_remote_grafana,
+        )
+        self.framework.observe(
+            self._charm.on[self._grafana_relation].relation_changed,
+            self._update_remote_grafana,
+        )
+        self.framework.observe(
             self._charm.on[self._target_relation].relation_changed,
             self.update_dashboards,
         )
@@ -990,13 +1038,16 @@ class GrafanaDashboardAggregator(Object):
             )
             return
 
-        self._stored.id_mappings[event.app.name] = dashboards
-
         for id in dashboards:
             self._stored.dashboard_templates[id] = self._content_to_dashboard_object(
                 dashboards[id], event
             )
 
+        self._stored.id_mappings[event.app.name] = dashboards
+        self._update_remote_grafana(event)
+
+    def _update_remote_grafana(self, _: Optional[RelationEvent] = None) -> None:
+        """Push dashboards to the downstream Grafana relation."""
         # It's still ridiculous to add a UUID here, but needed
         stored_data = {
             "templates": _type_convert_stored(self._stored.dashboard_templates),
@@ -1072,7 +1123,7 @@ class GrafanaDashboardAggregator(Object):
         template["dashboard"] = dash
         return template
 
-    def _handle_reactive_dashboards(self, event: RelationEvent) -> Dict:
+    def _handle_reactive_dashboards(self, event: RelationEvent) -> Optional[Dict]:
         """Look for a dashboard in relation data (during a reactive hook) or builtin by name."""
         templates = []
         id = ""
@@ -1084,12 +1135,11 @@ class GrafanaDashboardAggregator(Object):
             if k.startswith("request_"):
                 templates.append(json.loads(event.relation.data[event.unit][k])["dashboard"])
 
-        # Try app data if we haven't found it
         for k in event.relation.data[event.app].keys():
             if k.startswith("request_"):
-                templates.append(json.loads(event.relation.data[event.unit][k])["dashboard"])
+                templates.append(json.loads(event.relation.data[event.app][k])["dashboard"])
 
-        builtins = self._maybe_builtin_dashboards(event)
+        builtins = self._maybe_get_builtin_dashboards(event)
 
         if not templates and not builtins:
             return {}
@@ -1102,7 +1152,9 @@ class GrafanaDashboardAggregator(Object):
             # This seems ridiculous, too, but to get it from a "dashboards" key in serialized JSON
             # in the bucket back out to the actual "dashboard" we _need_, this is the way
             # This is not a mistake -- there's a double nesting in reactive charms, and
-            # Grafana won't load it
+            # Grafana won't load it. We have to unbox:
+            # event.relation.data[event.<type>]["request_*"]["dashboard"]["dashboard"],
+            # and the final unboxing is below.
             dash = json.dumps(t["dashboard"])
 
             # Replace the old-style datasource templates
@@ -1119,8 +1171,14 @@ class GrafanaDashboardAggregator(Object):
             dashboards[id] = content
         return {**builtins, **dashboards}
 
-    def _maybe_builtin_dashboards(self, event: RelationEvent) -> Dict:
-        """Scans the built-in dashboards and tries to match one with the event."""
+    def _maybe_get_builtin_dashboards(self, event: RelationEvent) -> Dict:
+        """Tries to match the event with an included dashboard.
+
+        Scans dashboards packed with the charm instantiating this class, and tries to match
+        one with the event. There is no guarantee that any given event will match a builtin,
+        since each charm instantiating this class may include a different set of dashboards,
+        or none.
+        """
         builtins = {}
         dashboards_path = None
 

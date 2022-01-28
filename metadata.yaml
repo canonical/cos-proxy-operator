@@ -1,9 +1,9 @@
 # Copyright 2021 Canonical
 # See LICENSE file for licensing details.
-name: lma-proxy
+name: cos-proxy
 
 description: |
-  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based COS
+  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based Canonical Observability Stack
 
 summary: |
   Single integration point in the machine world with Kubernetes-based COS
@@ -11,6 +11,7 @@ summary: |
 tags:
   - observability
   - lma
+  - cos
   - monitoring
   - logging
   - alerting

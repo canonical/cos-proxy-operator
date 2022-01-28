@@ -359,8 +359,8 @@ class NrpeExporterProvider(Object):
                     "app_name": relation.app.name,
                     "target": {
                         unit.name: {
-                            "hostname": addr,
-                            "port": "5666",
+                            "hostname": str(exporter_address),
+                            "port": "9275",
                         },
                     },
                     "additional_fields": {
@@ -369,7 +369,7 @@ class NrpeExporterProvider(Object):
                             {"source_labels": ["__param_target"], "target_label": "instance"},
                             {
                                 "target_label": "__address_",
-                                "replacement": "{}:9275".format(exporter_address),
+                                "replacement": "{}:9275".format(addr),
                             },
                         ],
                         "updates": {
