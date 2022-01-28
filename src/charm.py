@@ -227,7 +227,7 @@ class COSProxyCharm(CharmBase):
 
         for nrpe in nrpes:
             self.metrics_aggregator.set_target_job_data(
-                nrpe["target"], nrpe["app_name"], nrpe["additional_fields"]
+                nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
             )
 
     def _set_status(self):
