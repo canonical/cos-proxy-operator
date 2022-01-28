@@ -360,8 +360,8 @@ class NrpeExporterProvider(Object):
                     "app_name": relation.app.name,
                     "target": {
                         unit.name: {
-                            "hostname": str(exporter_address),
-                            "port": "9275",
+                            "hostname": addr,
+                            "port": "5666",
                         },
                     },
                     "additional_fields": {
@@ -369,8 +369,12 @@ class NrpeExporterProvider(Object):
                             {"source_labels": ["__address__"], "target_label": "__param_target"},
                             {"source_labels": ["__param_target"], "target_label": "instance"},
                             {
-                                "target_label": "__address_",
-                                "replacement": "{}:9275".format(addr),
+                                "target_label": "__address__",
+                                "replacement": "{}:9275".format(exporter_address),
+                            },
+                            {
+                                "target_label": "juju_unit",
+                                "replacement": unit.name,
                             },
                         ],
                         "updates": {
