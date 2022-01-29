@@ -77,16 +77,16 @@ jobs:
       run: python -m pip install tox
     - name: Run tests
       run: tox -e unit
-  integration-test-microk8s:
-    name: Integration tests (microk8s)
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-    - name: Setup operator environment
-      uses: charmed-kubernetes/actions-operator@main
-      with:
-        juju-channel: latest/candidate # FIXME: Once 2.9.23 hits stable
-        provider: microk8s
-    - name: Run integration tests
-      run: tox -vve integration
+#  integration-test-microk8s:
+#    name: Integration tests (microk8s)
+#    runs-on: ubuntu-latest
+#    steps:
+#    - name: Checkout
+#      uses: actions/checkout@v2
+#    - name: Setup operator environment
+#      uses: charmed-kubernetes/actions-operator@main
+#      with:
+#        juju-channel: latest/candidate # FIXME: Once 2.9.23 hits stable
+#        provider: microk8s
+#    - name: Run integration tests
+#      run: tox -vve integration
