@@ -25,7 +25,7 @@ from unittest.mock import patch
 from ops.model import BlockedStatus
 from ops.testing import Harness
 
-from charm import LMAProxyCharm
+from charm import COSProxyCharm
 
 ALERT_RULE_1 = """- alert: CPU_Usage
   expr: cpu_usage_idle{is_container!=\"True\", group=\"promoagents-juju\"} < 10
@@ -139,9 +139,9 @@ DUMMY_FIXED_2 = {
 @patch.object(uuid, "uuid4", new=lambda: "12345678")
 @patch.object(base64, "b64encode", new=lambda x: x)
 @patch.object(base64, "b64decode", new=lambda x: x)
-class LMAProxyCharmTest(unittest.TestCase):
+class COSProxyCharmTest(unittest.TestCase):
     def setUp(self):
-        self.harness = Harness(LMAProxyCharm)
+        self.harness = Harness(COSProxyCharm)
         self.harness.set_model_info(name="testmodel", uuid="1234567890")
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
@@ -169,9 +169,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         downstream_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(downstream_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(downstream_rel_id, "cos-prometheus/0")
 
         self.assertEqual(
             self.harness.model.unit.status,
@@ -182,9 +182,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         downstream_rel_id = self.harness.add_relation(
-            "downstream-grafana-dashboard", "lma-grafana"
+            "downstream-grafana-dashboard", "cos-grafana"
         )
-        self.harness.add_relation_unit(downstream_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(downstream_rel_id, "cos-prometheus/0")
 
         self.assertEqual(
             self.harness.model.unit.status,
@@ -195,7 +195,7 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         downstream_rel_id = self.harness.add_relation("dashboards", "target-app")
-        self.harness.add_relation_unit(downstream_rel_id, "lma-grafana/0")
+        self.harness.add_relation_unit(downstream_rel_id, "cos-grafana/0")
 
         self.assertEqual(
             self.harness.model.unit.status,
@@ -206,9 +206,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         target_rel_id = self.harness.add_relation("prometheus-target", "target-app")
         self.harness.add_relation_unit(target_rel_id, "target-app/0")
@@ -260,9 +260,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         )
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         prometheus_rel_data = self.harness.get_relation_data(
             prometheus_rel_id, self.harness.model.app.name
@@ -293,9 +293,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         alert_rules_rel_id = self.harness.add_relation("prometheus-rules", "rules-app")
         self.harness.add_relation_unit(alert_rules_rel_id, "rules-app/0")
@@ -351,9 +351,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         )
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         prometheus_rel_data = self.harness.get_relation_data(
             prometheus_rel_id, self.harness.model.app.name
@@ -392,9 +392,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         target_rel_id_1 = self.harness.add_relation("prometheus-target", "target-app-1")
         self.harness.add_relation_unit(target_rel_id_1, "target-app-1/0")
@@ -465,9 +465,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         alert_rules_rel_id_1 = self.harness.add_relation("prometheus-rules", "rules-app-1")
         self.harness.add_relation_unit(alert_rules_rel_id_1, "rules-app-1/0")
@@ -544,9 +544,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         target_rel_id_1 = self.harness.add_relation("prometheus-target", "target-app-1")
         self.harness.add_relation_unit(target_rel_id_1, "target-app-1/0")
@@ -604,9 +604,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         alert_rules_rel_id_1 = self.harness.add_relation("prometheus-rules", "rules-app-1")
         self.harness.add_relation_unit(alert_rules_rel_id_1, "rules-app-1/0")
@@ -669,9 +669,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         target_rel_id = self.harness.add_relation("prometheus-target", "target-app")
         self.harness.add_relation_unit(target_rel_id, "target-app/0")
@@ -732,9 +732,9 @@ class LMAProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "lma-prometheus"
+            "downstream-prometheus-scrape", "cos-prometheus"
         )
-        self.harness.add_relation_unit(prometheus_rel_id, "lma-prometheus/0")
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
 
         alert_rules_rel_id = self.harness.add_relation("prometheus-rules", "rules-app")
         self.harness.add_relation_unit(alert_rules_rel_id, "rules-app/0")
@@ -796,8 +796,8 @@ class LMAProxyCharmTest(unittest.TestCase):
     def test_dashboard_are_forwarded(self):
         self.harness.set_leader(True)
 
-        grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "lma-grafana")
-        self.harness.add_relation_unit(grafana_rel_id, "lma-grafana/0")
+        grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "cos-grafana")
+        self.harness.add_relation_unit(grafana_rel_id, "cos-grafana/0")
 
         target_rel_id = self.harness.add_relation("dashboards", "dashboard-app")
         self.harness.add_relation_unit(target_rel_id, "dashboard-app/0")
@@ -812,8 +812,8 @@ class LMAProxyCharmTest(unittest.TestCase):
     def test_multiple_dashboards_are_forwarded(self):
         self.harness.set_leader(True)
 
-        grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "lma-grafana")
-        self.harness.add_relation_unit(grafana_rel_id, "lma-grafana/0")
+        grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "cos-grafana")
+        self.harness.add_relation_unit(grafana_rel_id, "cos-grafana/0")
 
         target_rel_id_1 = self.harness.add_relation("dashboards", "dashboard-app-1")
         self.harness.add_relation_unit(target_rel_id_1, "dashboard-app-1/0")
@@ -836,8 +836,8 @@ class LMAProxyCharmTest(unittest.TestCase):
     def test_dashboards_are_converted(self):
         self.harness.set_leader(True)
 
-        grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "lma-grafana")
-        self.harness.add_relation_unit(grafana_rel_id, "lma-grafana/0")
+        grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "cos-grafana")
+        self.harness.add_relation_unit(grafana_rel_id, "cos-grafana/0")
 
         target_rel_id_1 = self.harness.add_relation("dashboards", "dashboard-app-1")
         self.harness.add_relation_unit(target_rel_id_1, "dashboard-app-1/0")

@@ -25,8 +25,9 @@ consumed and sent through the Prometheus relation, by responding to
 """
 
 import json
-from json.decoder import JSONDecodeError
 import logging
+import re
+from json.decoder import JSONDecodeError
 from typing import Any, Optional
 
 import yaml
@@ -163,7 +164,8 @@ def find_key(d: dict, key: str) -> Any:
     """Finds a key nested arbitrarily deeply inside a dictself.
 
     Principally useful since the structure of NRPE relation data is
-    not completely reliable."""
+    not completely reliable.
+    """
     if key in d:
         return d[key]
     for child in d.values():
@@ -354,6 +356,7 @@ class NrpeExporterProvider(Object):
                 id = relation.data[unit].get("target-id", "") or relation.data[unit].get(
                     "target_id", ""
                 )
+                id = re.sub(r"^juju[-_]", "", id)
 
                 job_config = {
                     "app_name": relation.app.name,
@@ -368,8 +371,15 @@ class NrpeExporterProvider(Object):
                             {"source_labels": ["__address__"], "target_label": "__param_target"},
                             {"source_labels": ["__param_target"], "target_label": "instance"},
                             {
-                                "target_label": "__address_",
+                                "target_label": "__address__",
                                 "replacement": "{}:9275".format(exporter_address),
+                            },
+                            {
+                                "target_label": "juju_unit",
+                                # Turn sql-foo-0 or redis_bar_1 into sql-foo/0 or redis-bar/1
+                                "replacement": re.sub(
+                                    r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")
+                                ),
                             },
                         ],
                         "updates": {
@@ -385,7 +395,7 @@ class NrpeExporterProvider(Object):
                             "job_name": "juju_{}_{}_{}_{}_prometheus_scrape".format(
                                 self.model.name,
                                 self.model.uuid[:7],
-                                id.replace("juju-", "", 1).replace("-", "_"),
+                                id.replace("-", "_"),
                                 cmd,
                             ),
                         },
