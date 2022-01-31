@@ -1,14 +1,18 @@
 # COS Proxy charm
 
-This Juju machine charm that provides a single integration point in the machine world with the Kubernetes-based [COS bundle](https://charmhub.io/cos-light).
+This Juju machine charm that provides a single integration point in the machine world
+with the Kubernetes-based [COS bundle](https://charmhub.io/cos-light).
 
-This charm is designed to be easy to integrate in bundles and Juju-driven appliances, and reduce the amount of setup needed to integrate with the Kubernetes-based COS to just connect the COS Proxy charm with it.
+This charm is designed to be easy to integrate in bundles and Juju-driven appliances,
+and reduce the amount of setup needed to integrate with the Kubernetes-based COS to
+just connect the COS Proxy charm with it.
 
 Proxying support is provided for:
 
 * Prometheus
 * Grafana Dashboards
-* NRPE (through [nrpe_exporter](https://github.com/canonical/nrpe_exporter), which sends NRPE results to Prometheus
+* NRPE (through [nrpe_exporter](https://github.com/canonical/nrpe_exporter), which sends
+NRPE results to Prometheus
 
 ## Deployment
 
@@ -75,8 +79,6 @@ Now we can do the same for Grafana
 
 ```
 juju offer cos.grafana:grafana_dashboard
-```
-
 juju relate -m reactive telegraf:dashboards cos-proxy:dashboards
 ```
 
