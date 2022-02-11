@@ -57,7 +57,7 @@ rules, we must use a cross model relation.
 Offer the relation in the cos model:
 
 ```
-juju offer cos.prometheus:prometheus_scrape
+juju offer cos.prometheus:metrics-endpoint
 ```
 
 Deploy the cos-proxy charm in a new machine unit on the target model:
