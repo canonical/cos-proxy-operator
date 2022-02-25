@@ -1,7 +1,7 @@
 # COS Proxy charm
 
 This Juju machine charm that provides a single integration point in the machine world
-with the Kubernetes-based [COS bundle](https://charmhub.io/cos-light).
+with the Kubernetes-based [COS bundle](https://charmhub.io/cos-lite).
 
 This charm is designed to be easy to integrate in bundles and Juju-driven appliances,
 and reduce the amount of setup needed to integrate with the Kubernetes-based COS to
