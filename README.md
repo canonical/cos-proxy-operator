@@ -43,7 +43,8 @@ juju add-model reactive serverstack
 juju add-model cos microk8s-cluster
 ```
 
-Next we'll deploy an example application on the `reactive` model:
+Next we'll deploy an example application on the `reactive` model, which should be present
+on a single Juju controller which manages both microk8s and a reactive model:
 
 ```
 juju deploy -m reactive cs:ubuntu --series focal -n 3
@@ -78,7 +79,7 @@ juju relate -m reactive prometheus cos-proxy:downstream-prometheus-scrape
 Now we can do the same for Grafana
 
 ```
-juju offer cos.grafana:grafana_dashboard
+juju offer cos.grafana:grafana-dashboard
 juju relate -m reactive telegraf:dashboards cos-proxy:dashboards
 ```
 
@@ -88,7 +89,7 @@ Add the cross model relation:
 juju consume -m reactive cos.prometheus
 juju consume -m reactive cos.grafana
 juju relate -m reactive prometheus cos-proxy:downstream-prometheus-scrape
-juju relate -m reactive grafana cos-proxy:downstream-grafana-dashboards
+juju relate -m reactive grafana cos-proxy:downstream-grafana-dashboard
 ```
 
 ## NRPE Exporting
