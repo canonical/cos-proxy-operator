@@ -47,6 +47,7 @@ Next we'll deploy an example application on the `reactive` model, which should b
 on a single Juju controller which manages both microk8s and a reactive model:
 
 ```
+juju deploy -m cos prometheus-k8s --channel=beta
 juju deploy -m reactive cs:ubuntu --series focal -n 3
 juju deploy -m reactive cs:telegraf
 juju relate -m reactive telegraf:juju-info ubuntu:juju-info
@@ -58,7 +59,7 @@ rules, we must use a cross model relation.
 Offer the relation in the cos model:
 
 ```
-juju offer cos.prometheus:metrics-endpoint
+juju offer microk8s-cluster:cos.prometheus-k8s:metrics-endpoint
 ```
 
 Deploy the cos-proxy charm in a new machine unit on the target model:
@@ -72,23 +73,23 @@ juju relate -m reactive telegraf:prometheus-rules cos-proxy:prometheus-rules
 Add the cross model relation:
 
 ```
-juju consume -m reactive cos.prometheus
-juju relate -m reactive prometheus cos-proxy:downstream-prometheus-scrape
+juju consume -m reactive microk8s-cluster:cos.prometheus-k8s
+juju relate -m reactive prometheus-k8s cos-proxy:downstream-prometheus-scrape
 ```
 
 Now we can do the same for Grafana
 
 ```
-juju offer cos.grafana:grafana-dashboard
+juju offer microk8s-cluster:cos.grafana:grafana-dashboard
 juju relate -m reactive telegraf:dashboards cos-proxy:dashboards
 ```
 
 Add the cross model relation:
 
 ```
-juju consume -m reactive cos.prometheus
-juju consume -m reactive cos.grafana
-juju relate -m reactive prometheus cos-proxy:downstream-prometheus-scrape
+juju consume -m reactive microk8s-cluster:cos.prometheus-k8s
+juju consume -m reactive microk8s-cluster:cos.grafana
+juju relate -m reactive prometheus-k8s cos-proxy:downstream-prometheus-scrape
 juju relate -m reactive grafana cos-proxy:downstream-grafana-dashboard
 ```
 
