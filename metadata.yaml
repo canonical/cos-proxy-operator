@@ -21,11 +21,6 @@ tags:
 
 series:
   - focal
-resources:
-  nrpe-exporter:
-    type: file
-    filename: nrpe_exporter
-    description: NRPE prometheus exporter
 provides:
   downstream-prometheus-scrape:
     interface: prometheus_scrape
