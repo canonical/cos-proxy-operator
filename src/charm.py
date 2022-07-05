@@ -31,6 +31,7 @@ Currently supported interfaces are for:
 """
 
 import logging
+import platform
 import stat
 import textwrap
 from pathlib import Path
@@ -159,15 +160,11 @@ class COSProxyCharm(CharmBase):
 
         # Make sure the exporter binary is present with a systemd service
         if not Path("/usr/local/bin/nrpe_exporter").exists():
-            with open(self.model.resources.fetch("nrpe-exporter"), "rb") as f:
-                with open("/usr/local/bin/nrpe_exporter", "wb") as g:
-                    chunk_size = 4096
-                    chunk = f.read(chunk_size)
-                    while len(chunk) > 0:
-                        g.write(chunk)
-                        chunk = f.read(chunk_size)
+            arch = platform.machine()
+            arch = "amd64" if arch == "x86_64" else arch
+            res = "nrpe_exporter-{}".format(arch)
 
-            st = Path("/usr/local/bin/nrpe_exporter")
+            st = Path(res)
             st.chmod(st.stat().st_mode | stat.S_IEXEC)
 
             systemd_template = textwrap.dedent(

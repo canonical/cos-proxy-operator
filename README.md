@@ -65,7 +65,7 @@ juju offer microk8s-cluster:cos.prometheus-k8s:metrics-endpoint
 Deploy the cos-proxy charm in a new machine unit on the target model:
 
 ```
-juju deploy -m reactive cos-proxy  # or ./cos-proxy_ubuntu-20.04-amd64.charm --resource nrpe-exporter=./nrpe_exporter
+juju deploy -m reactive cos-proxy  # or ./cos-proxy_ubuntu-20.04-amd64.charm
 juju relate -m reactive telegraf:prometheus-client cos-proxy:prometheus-target
 juju relate -m reactive telegraf:prometheus-rules cos-proxy:prometheus-rules
 ```
@@ -94,11 +94,6 @@ juju relate -m reactive grafana cos-proxy:downstream-grafana-dashboard
 ```
 
 ## NRPE Exporting
-
-The `nrpe_exporter` binary used as a resource can be built from the [nrpe_exporter](https://github.com/canonical/nrpe_exporter)
-repository by cloning and running `make`. `docker` is a build dependency, since `nrpe_exporter` (and `nrpe` itself)
-use older SSL ciphers, and a connection cannot be negotiated in pure Go.
-
 NRPE targets may appear on multiple relations. To capture all jobs, `cos-proxy` should be related to
 **BOTH** an existing reactive NRPE subordinate charm, as well as the application which that charm is subordinated to,
 as the `monitors` interface may appear on either, with the principal charm providing "host-level" checks, and
