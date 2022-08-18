@@ -184,7 +184,7 @@ class COSProxyCharmTest(unittest.TestCase):
         downstream_rel_id = self.harness.add_relation(
             "downstream-grafana-dashboard", "cos-grafana"
         )
-        self.harness.add_relation_unit(downstream_rel_id, "cos-prometheus/0")
+        self.harness.add_relation_unit(downstream_rel_id, "cos-grafana/0")
 
         self.assertEqual(
             self.harness.model.unit.status,
@@ -195,7 +195,7 @@ class COSProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         downstream_rel_id = self.harness.add_relation("dashboards", "target-app")
-        self.harness.add_relation_unit(downstream_rel_id, "cos-grafana/0")
+        self.harness.add_relation_unit(downstream_rel_id, "target-app/0")
 
         self.assertEqual(
             self.harness.model.unit.status,
