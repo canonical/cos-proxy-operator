@@ -90,7 +90,7 @@ DUMMY_FIXED_1 = {
     "juju_topology": {
         "application": "dashboard-app-1",
         "model": "testmodel",
-        "model_uuid": "1234567890",
+        "model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
         "unit": "dashboard-app-1/0",
     },
 }
@@ -128,7 +128,7 @@ DUMMY_FIXED_2 = {
     "juju_topology": {
         "application": "dashboard-app-2",
         "model": "testmodel",
-        "model_uuid": "1234567890",
+        "model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
         "unit": "dashboard-app-2/0",
     },
 }
@@ -136,13 +136,13 @@ DUMMY_FIXED_2 = {
 
 @patch.object(lzma, "compress", new=lambda x, *args, **kwargs: x)
 @patch.object(lzma, "decompress", new=lambda x, *args, **kwargs: x)
-@patch.object(uuid, "uuid4", new=lambda: "12345678")
+@patch.object(uuid, "uuid4", new=lambda: "21838076-1191-4a88-8008-234433115007")
 @patch.object(base64, "b64encode", new=lambda x: x)
 @patch.object(base64, "b64decode", new=lambda x: x)
 class COSProxyCharmTest(unittest.TestCase):
     def setUp(self):
         self.harness = Harness(COSProxyCharm)
-        self.harness.set_model_info(name="testmodel", uuid="1234567890")
+        self.harness.set_model_info(name="testmodel", uuid="ae3c0b14-9c3a-4262-b560-7a6ad7d3642f")
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
@@ -227,13 +227,13 @@ class COSProxyCharmTest(unittest.TestCase):
         scrape_jobs = json.loads(prometheus_rel_data.get("scrape_jobs", "[]"))
         expected_jobs = [
             {
-                "job_name": "juju_testmodel_1234567_target-app_prometheus_scrape",
+                "job_name": "juju_testmodel_ae3c0b1_target-app_prometheus_scrape",
                 "static_configs": [
                     {
                         "targets": ["scrape_target_0:1234"],
                         "labels": {
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567890",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "target-app",
                             "juju_unit": "target-app/0",
                             "host": "scrape_target_0",
@@ -270,13 +270,13 @@ class COSProxyCharmTest(unittest.TestCase):
         scrape_jobs = json.loads(prometheus_rel_data.get("scrape_jobs", "[]"))
         expected_jobs = [
             {
-                "job_name": "juju_testmodel_1234567_target-app_prometheus_scrape",
+                "job_name": "juju_testmodel_ae3c0b1_target-app_prometheus_scrape",
                 "static_configs": [
                     {
                         "targets": ["scrape_target_0:1234"],
                         "labels": {
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567890",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "target-app",
                             "juju_unit": "target-app/0",
                             "host": "scrape_target_0",
@@ -314,7 +314,7 @@ class COSProxyCharmTest(unittest.TestCase):
         self.assertEqual(len(groups), 1)
         group = groups[0]
         expected_group = {
-            "name": "juju_testmodel_1234567_rules-app_alert_rules",
+            "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
             "rules": [
                 {
                     "alert": "CPU_Usage",
@@ -325,7 +325,7 @@ class COSProxyCharmTest(unittest.TestCase):
                         "severity": "page",
                         "cloud": "juju",
                         "juju_model": "testmodel",
-                        "juju_model_uuid": "1234567",
+                        "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                         "juju_application": "rules-app",
                         "juju_unit": "rules-app/0",
                     },
@@ -364,7 +364,7 @@ class COSProxyCharmTest(unittest.TestCase):
         self.assertEqual(len(groups), 1)
         group = groups[0]
         expected_group = {
-            "name": "juju_testmodel_1234567_rules-app_alert_rules",
+            "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
             "rules": [
                 {
                     "alert": "CPU_Usage",
@@ -375,7 +375,7 @@ class COSProxyCharmTest(unittest.TestCase):
                         "severity": "page",
                         "cloud": "juju",
                         "juju_model": "testmodel",
-                        "juju_model_uuid": "1234567",
+                        "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                         "juju_application": "rules-app",
                         "juju_unit": "rules-app/0",
                     },
@@ -426,13 +426,13 @@ class COSProxyCharmTest(unittest.TestCase):
 
         expected_jobs = [
             {
-                "job_name": "juju_testmodel_1234567_target-app-1_prometheus_scrape",
+                "job_name": "juju_testmodel_ae3c0b1_target-app-1_prometheus_scrape",
                 "static_configs": [
                     {
                         "targets": ["scrape_target_0:1234"],
                         "labels": {
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567890",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "target-app-1",
                             "juju_unit": "target-app-1/0",
                             "host": "scrape_target_0",
@@ -442,13 +442,13 @@ class COSProxyCharmTest(unittest.TestCase):
                 "relabel_configs": [RELABEL_INSTANCE_CONFIG],
             },
             {
-                "job_name": "juju_testmodel_1234567_target-app-2_prometheus_scrape",
+                "job_name": "juju_testmodel_ae3c0b1_target-app-2_prometheus_scrape",
                 "static_configs": [
                     {
                         "targets": ["scrape_target_1:5678"],
                         "labels": {
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567890",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "target-app-2",
                             "juju_unit": "target-app-2/0",
                             "host": "scrape_target_1",
@@ -494,7 +494,7 @@ class COSProxyCharmTest(unittest.TestCase):
         self.assertEqual(len(groups), 2)
         expected_groups = [
             {
-                "name": "juju_testmodel_1234567_rules-app-1_alert_rules",
+                "name": "juju_testmodel_ae3c0b1_rules-app-1_alert_rules",
                 "rules": [
                     {
                         "alert": "CPU_Usage",
@@ -505,7 +505,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "severity": "page",
                             "cloud": "juju",
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "rules-app-1",
                             "juju_unit": "rules-app-1/0",
                         },
@@ -517,7 +517,7 @@ class COSProxyCharmTest(unittest.TestCase):
                 ],
             },
             {
-                "name": "juju_testmodel_1234567_rules-app-2_alert_rules",
+                "name": "juju_testmodel_ae3c0b1_rules-app-2_alert_rules",
                 "rules": [
                     {
                         "alert": "DiskFull",
@@ -527,7 +527,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "override_group_by": "host",
                             "severity": "page",
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "rules-app-2",
                             "juju_unit": "rules-app-2/0",
                         },
@@ -582,13 +582,13 @@ class COSProxyCharmTest(unittest.TestCase):
 
         expected_jobs = [
             {
-                "job_name": "juju_testmodel_1234567_target-app-1_prometheus_scrape",
+                "job_name": "juju_testmodel_ae3c0b1_target-app-1_prometheus_scrape",
                 "static_configs": [
                     {
                         "targets": ["scrape_target_0:1234"],
                         "labels": {
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567890",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "target-app-1",
                             "juju_unit": "target-app-1/0",
                             "host": "scrape_target_0",
@@ -639,7 +639,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         expected_groups = [
             {
-                "name": "juju_testmodel_1234567_rules-app-1_alert_rules",
+                "name": "juju_testmodel_ae3c0b1_rules-app-1_alert_rules",
                 "rules": [
                     {
                         "alert": "CPU_Usage",
@@ -650,7 +650,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "severity": "page",
                             "cloud": "juju",
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "rules-app-1",
                             "juju_unit": "rules-app-1/0",
                         },
@@ -710,13 +710,13 @@ class COSProxyCharmTest(unittest.TestCase):
 
         expected_jobs = [
             {
-                "job_name": "juju_testmodel_1234567_target-app_prometheus_scrape",
+                "job_name": "juju_testmodel_ae3c0b1_target-app_prometheus_scrape",
                 "static_configs": [
                     {
                         "targets": ["scrape_target_0:1234"],
                         "labels": {
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567890",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "target-app",
                             "juju_unit": "target-app/0",
                             "host": "scrape_target_0",
@@ -767,7 +767,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         expected_groups = [
             {
-                "name": "juju_testmodel_1234567_rules-app_alert_rules",
+                "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
                 "rules": [
                     {
                         "alert": "CPU_Usage",
@@ -778,7 +778,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "severity": "page",
                             "cloud": "juju",
                             "juju_model": "testmodel",
-                            "juju_model_uuid": "1234567",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
                             "juju_application": "rules-app",
                             "juju_unit": "rules-app/0",
                         },
