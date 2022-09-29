@@ -132,6 +132,7 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(self.on.general_info_relation_joined, self._nrpe_relation_joined)
         self.framework.observe(self.on.general_info_relation_broken, self._nrpe_relation_broken)
 
+        self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.stop, self._on_stop)
 
         self._set_status()
@@ -143,6 +144,10 @@ class COSProxyCharm(CharmBase):
     def _dashboards_relation_broken(self, _):
         self._stored.have_dashboards = False
         self._set_status()
+
+    def _on_install(self, _):
+        """Initial charm setup."""
+        self.unit.set_workload_version("n/a")
 
     def _on_stop(self, _):
         """Ensure that nrpe exporter is removed and stopped."""
