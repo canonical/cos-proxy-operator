@@ -1283,7 +1283,7 @@ class GrafanaDashboardAggregator(Object):
     and transport them into Charmed Operators, using Juju topology.
 
     For detailed usage instructions, see the documentation for
-    :module:`lma-proxy-operator`, as this class is intended for use as a
+    :module:`cos-proxy-operator`, as this class is intended for use as a
     single point of intersection rather than use in individual charms.
 
     Since :class:`GrafanaDashboardAggregator` serves as a bridge between
@@ -1424,6 +1424,12 @@ class GrafanaDashboardAggregator(Object):
             if "list" in dash["templating"]:
                 for i in range(len(dash["templating"]["list"])):
                     if (
+                        "name" in dash["templating"]["list"][i]
+                        and "app" in dash["templating"]["list"][i]["datasource"]
+                    ):
+                        del dash["templating"]["list"][i]
+                        continue
+                    if (
                         "datasource" in dash["templating"]["list"][i]
                         and "Juju" in dash["templating"]["list"][i]["datasource"]
                     ):
@@ -1433,6 +1439,19 @@ class GrafanaDashboardAggregator(Object):
                         and dash["templating"]["list"][i]["name"] == "host"
                     ):
                         dash["templating"]["list"][i] = REACTIVE_CONVERTER
+
+                # Strip out newly-added 'juju_application' template variables which
+                # don't line up with our drop-downs
+                dash_mutable = dash
+                for i in range(len(dash["templating"]["list"])):
+                    if (
+                        "name" in dash["templating"]["list"][i]
+                        and "app" in dash["templating"]["list"][i]["datasource"]
+                    ):
+                        del dash_mutable["templating"]["list"][i]
+
+                if dash_mutable:
+                    dash = dash_mutable
         except KeyError:
             logger.debug("No existing templating data in dashboard")
 
@@ -1486,11 +1505,17 @@ class GrafanaDashboardAggregator(Object):
             # Replace the old-style datasource templates
             dash = re.sub(r"<< datasource >>", r"${prometheusds}", dash)
             dash = re.sub(r'"datasource": "prom.*?"', r'"datasource": "${prometheusds}"', dash)
+            dash = re.sub(
+                r'"datasource": ".*?Juju generated.*?"', r'"datasource": "${prometheusds}"', dash
+            )
+
+            # Yank out "new"+old LMA topology
+            dash = re.sub(r',?juju_application=~"$app"', "", dash)
 
             from jinja2 import Template
 
             content = _encode_dashboard_content(
-                Template(dash).render(host=event.unit.name, datasource="prometheus")
+                Template(dash).render(host=r"$host", datasource="${prometheusds}")
             )
             id = "prog:{}".format(content[-24:-16])
 
