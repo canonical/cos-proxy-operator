@@ -32,6 +32,7 @@ Currently supported interfaces are for:
 
 import logging
 import platform
+import shutil
 import stat
 import textwrap
 from pathlib import Path
@@ -154,7 +155,7 @@ class COSProxyCharm(CharmBase):
         if service_running("nrpe-exporter"):
             service_stop("nrpe-exporter")
 
-        files = ["/usr/local/bin/nrpe_exporter", "/etc/systemd/systemd/nrpe-exporter.service"]
+        files = ["/usr/local/bin/nrpe-exporter", "/etc/systemd/systemd/nrpe-exporter.service"]
 
         for f in files:
             if Path(f).exists():
@@ -164,13 +165,14 @@ class COSProxyCharm(CharmBase):
         self._stored.have_nrpe = True
 
         # Make sure the exporter binary is present with a systemd service
-        if not Path("/usr/local/bin/nrpe_exporter").exists():
+        if not Path("/usr/local/bin/nrpe-exporter").exists():
             arch = platform.machine()
             arch = "amd64" if arch == "x86_64" else arch
             res = "nrpe_exporter-{}".format(arch)
 
             st = Path(res)
             st.chmod(st.stat().st_mode | stat.S_IEXEC)
+            shutil.copy(str(st.absolute()), "/usr/local/bin/nrpe-exporter")
 
             systemd_template = textwrap.dedent(
                 """
@@ -178,7 +180,7 @@ class COSProxyCharm(CharmBase):
                 Description=NRPE Prometheus exporter
 
                 [Service]
-                ExecStart=/usr/local/bin/nrpe_exporter
+                ExecStart=/usr/local/bin/nrpe-exporter
 
                 [Install]
                 WantedBy=multi-user.target

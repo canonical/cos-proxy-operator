@@ -387,6 +387,7 @@ class NrpeExporterProvider(Object):
                                 "command": [cmd],
                                 "ssl": [True],
                             },
+                            "metrics_path": "/export",
                             # Override job_name with something specific to the NRPE job
                             # and the unit it's coming from.
                             #
