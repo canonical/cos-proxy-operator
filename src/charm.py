@@ -233,8 +233,8 @@ class COSProxyCharm(CharmBase):
             removed_alerts = event.removed_alerts
             for a in removed_alerts:
                 self.metrics_aggregator.remove_alert_rules(
-                    self.metrics_aggregator.group_name(a["labels"]["juju_application"]),
-                    a["labels"]["juju_unit"],
+                    self.metrics_aggregator.group_name(a["labels"]["juju_application"]),  # type: ignore
+                    a["labels"]["juju_unit"],  # type: ignore
                 )
 
         nrpes = self.nrpe_exporter.endpoints()
