@@ -204,8 +204,8 @@ class NrpeTargetsChangedEvent(EventBase):
         self,
         handle,
         relation_id,
-        removed_targets: List[str] = None,
-        removed_alerts: List[str] = None,
+        removed_targets: List[str],
+        removed_alerts: List[str],
     ):
         super().__init__(handle)
         self.relation_id = relation_id
@@ -285,7 +285,7 @@ class NrpeExporterProvider(Object):
         rel_id = event.relation.id
 
         nrpe_endpoints = []
-        alerts = []
+        alerts = []  # type: List[Dict]
 
         for relation_name in self._relation_names.keys():
             for relation in self._charm.model.relations[relation_name]:
