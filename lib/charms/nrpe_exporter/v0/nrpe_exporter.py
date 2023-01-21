@@ -442,7 +442,7 @@ class NrpeExporterProvider(Object):
                 "juju_application": re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-")),
                 "juju_unit": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
                 "nrpe_application": relation.app.name,
-                "nrpe_unit": unit,
+                "nrpe_unit": unit.name,
             },
             "annotations": {
                 "summary": "Unit {{ $labels.juju_unit }}: {{ $labels.command }} critical.",
