@@ -87,6 +87,7 @@ DUMMY_FIXED_1 = {
     "content": '{"__inputs": [], "templating": {"list": [{"datasource": '
     '"${prometheusds}"}]}, "panels": {"data": '
     '"some_data_to_hash_across"}}',
+    "inject_dropdowns": True,
     "juju_topology": {
         "application": "dashboard-app-1",
         "model": "testmodel",
@@ -114,8 +115,18 @@ DASHBOARD_DUMMY_DATA_2 = {
 
 DUMMY_FIXED_2 = {
     "charm": "dashboard-app-2",
-    "content": '{"templating": {"list": [{"name": "host"}]}, '
+    "content": '{"templating": {"list": [{"allValue": null, "datasource": '
+    '"${prometheusds}", "definition": '
+    '"label_values(up{juju_model=\\"$juju_model\\",juju_model_uuid=\\"$juju_model_uuid\\",juju_application=\\"$juju_application\\"},host)", '
+    '"description": null, "error": null, "hide": 0, "includeAll": '
+    'false, "label": "hosts", "multi": true, "name": "host", '
+    '"options": [], "query": {"query": '
+    '"label_values(up{juju_model=\\"$juju_model\\",juju_model_uuid=\\"$juju_model_uuid\\",juju_application=\\"$juju_application\\"},host)", '
+    '"refId": "StandardVariableQuery"}, "refresh": 1, "regex": "", '
+    '"skipUrlSync": false, "sort": 1, "tagValuesQuery": "", "tags": '
+    '[], "tagsQuery": "", "type": "query", "useTags": false}]}, '
     '"panels": {"data": "different_enough_to_rehash"}}',
+    "inject_dropdowns": True,
     "juju_topology": {
         "application": "dashboard-app-2",
         "model": "testmodel",
@@ -847,6 +858,5 @@ class COSProxyCharmTest(unittest.TestCase):
         )
         dashboards = json.loads(grafana_rel_data.get("dashboards", "{}"))
         self.assertEqual(len(dashboards["templates"]), 2)
-
         self.assertEqual(dashboards["templates"]["prog:e_data_t"], DUMMY_FIXED_1)
         self.assertEqual(dashboards["templates"]["prog:rent_eno"], DUMMY_FIXED_2)
