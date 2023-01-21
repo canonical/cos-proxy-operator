@@ -28,11 +28,19 @@ import json
 import logging
 import re
 from json.decoder import JSONDecodeError
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 from ops.charm import CharmBase, RelationEvent, RelationRole
-from ops.framework import EventBase, EventSource, Object, ObjectEvents
+from ops.framework import (
+    EventBase,
+    EventSource,
+    Object,
+    ObjectEvents,
+    StoredDict,
+    StoredList,
+    StoredState,
+)
 
 # The unique Charmhub library identifier, never change it
 LIBID = "0xdeadbeef"
@@ -160,6 +168,19 @@ def _validate_relation_by_interface_and_direction(
         raise Exception("Unexpected RelationDirection: {}".format(expected_relation_role))
 
 
+def _type_convert_stored(obj):
+    """Convert Stored* to their appropriate types, recursively."""
+    if isinstance(obj, StoredList):
+        return list(map(_type_convert_stored, obj))
+    elif isinstance(obj, StoredDict):
+        rdict = {}  # type: Dict[Any, Any]
+        for k in obj.keys():
+            rdict[k] = _type_convert_stored(obj[k])
+        return rdict
+    else:
+        return obj
+
+
 def find_key(d: dict, key: str) -> Any:
     """Finds a key nested arbitrarily deeply inside a dictself.
 
@@ -179,17 +200,31 @@ def find_key(d: dict, key: str) -> Any:
 class NrpeTargetsChangedEvent(EventBase):
     """Event emitted when NRPE Exporter targets change."""
 
-    def __init__(self, handle, relation_id):
+    def __init__(
+        self,
+        handle,
+        relation_id,
+        removed_targets: List[str],
+        removed_alerts: List[str],
+    ):
         super().__init__(handle)
         self.relation_id = relation_id
+        self.removed_targets = removed_targets or []
+        self.removed_alerts = removed_alerts or []
 
     def snapshot(self):
         """Save target relation information."""
-        return {"relation_id": self.relation_id}
+        return {
+            "relation_id": self.relation_id,
+            "removed_targets": self.removed_targets,
+            "removed_alerts": self.removed_alerts,
+        }
 
     def restore(self, snapshot):
         """Restore target relation information."""
         self.relation_id = snapshot["relation_id"]
+        self.removed_targets = _type_convert_stored(snapshot["removed_targets"])
+        self.removed_alerts = _type_convert_stored(snapshot["removed_alerts"])
 
 
 class NrpeEvents(ObjectEvents):
@@ -202,6 +237,7 @@ class NrpeExporterProvider(Object):
     """A NRPE exporter based monitor."""
 
     on = NrpeEvents()
+    _stored = StoredState()
 
     def __init__(self, charm: CharmBase, relation_names: Optional[dict] = None):
         """A NRPE exporter based monitor.
@@ -229,6 +265,7 @@ class NrpeExporterProvider(Object):
 
         super().__init__(charm, "_".join(relation_names.keys()))
         self._charm = charm
+        self._stored.set_default(endpoints=[], alert_rules=[])
         self._relation_names = relation_names
         for relation_name in relation_names.keys():
             events = self._charm.on[relation_name]
@@ -247,7 +284,30 @@ class NrpeExporterProvider(Object):
         """
         rel_id = event.relation.id
 
-        self.on.nrpe_targets_changed.emit(relation_id=rel_id)
+        nrpe_endpoints = []
+        alerts = []  # type: List[Dict]
+
+        for relation_name in self._relation_names.keys():
+            for relation in self._charm.model.relations[relation_name]:
+                endpoints, alerts = self._generate_data(relation)
+                nrpe_endpoints.extend(endpoints)
+                alerts.extend(alerts)
+
+        removed_endpoints = [
+            e["additional_fields"]["updates"]["job_name"]
+            for e in _type_convert_stored(self._stored.endpoints)
+            if e not in nrpe_endpoints
+        ]
+        self._stored.endpoints = nrpe_endpoints
+
+        removed_alerts = [
+            a for a in _type_convert_stored(self._stored.alert_rules) if a not in alerts
+        ]
+        self._stored.alert_rules = alerts
+
+        self.on.nrpe_targets_changed.emit(
+            relation_id=rel_id, removed_targets=removed_endpoints, removed_alerts=removed_alerts
+        )
 
     def endpoints(self) -> list:
         """Fetch the list of NRPE exporter targets.
@@ -256,15 +316,17 @@ class NrpeExporterProvider(Object):
             A list consisting of all the endpoints and partial configurations
             to be ingested by Prometheus.
         """
-        nrpe_endpoints = []
+        return _type_convert_stored(self._stored.endpoints)
 
-        for relation_name in self._relation_names.keys():
-            for relation in self._charm.model.relations[relation_name]:
-                nrpe_endpoints.extend(self._nrpe_endpoint_config(relation))
+    def alerts(self) -> list:
+        """Fetch the list of automatically generated alert rules.
 
-        return nrpe_endpoints
+        Returns:
+            A list of alert rules, in dict format.
+        """
+        return _type_convert_stored(self._stored.alert_rules)
 
-    def _nrpe_endpoint_config(self, relation) -> list:
+    def _generate_data(self, relation) -> Tuple[list, list]:
         """Find NRPE jobs for a single relation, if they exist, and format the data.
 
         Args:
@@ -272,8 +334,10 @@ class NrpeExporterProvider(Object):
                 configuration is checked.
 
         Returns:
-            A list (possibly empty) of NRPE endpoints as a dict containing
-                parameterized data which can be ingested by Prometheus.
+            A tuple consisting of a list (possibly empty) of NRPE endoints as a dict
+                containing parameterized data which can be ingested by Prometheus. If
+                endpoints are generated, the second item in the tuple will be a list of
+                dynamically created alert rules for those targets
 
         Machine/reactive monitor data can appear on a number of different interfaces,
         and takes the format of:
@@ -315,9 +379,10 @@ class NrpeExporterProvider(Object):
         different jobs, and requires combining.
         """
         if not relation.units:
-            return []
+            return [], []
 
         nrpe_endpoints = []
+        alerts = []
 
         exporter_address = self._charm.model.get_binding(relation).network.bind_address
 
@@ -337,71 +402,116 @@ class NrpeExporterProvider(Object):
                 monitor_data = monitors
             else:
                 logger.warning("Received monitor data with an unknown format. Skipping.")
-
-            if not monitor_data:
                 continue
 
+            if not isinstance(monitor_data, dict):
+                logger.warning("Monitor data is not a dict after parsing. Skipping.")
+                continue
             jobs = find_key(monitor_data, "nrpe")
             for val in jobs.values():
                 if isinstance(val, str):
                     cmd = val
                 else:
                     cmd = next(iter(val.values()))
-
-                # IP address could be 'target-address' OR 'target_address'
-                addr = relation.data[unit].get("target-address", "") or relation.data[unit].get(
-                    "target_address", ""
-                )
-                # Same for the target ID
+                # The ID could be `target-id` or `target_id`
                 id = relation.data[unit].get("target-id", "") or relation.data[unit].get(
                     "target_id", ""
                 )
                 id = re.sub(r"^juju[-_]", "", id)
 
-                job_config = {
-                    "app_name": relation.app.name,
-                    "target": {
-                        unit.name: {
-                            "hostname": addr,
-                            "port": "5666",
-                        },
-                    },
-                    "additional_fields": {
-                        "relabel_configs": [
-                            {"source_labels": ["__address__"], "target_label": "__param_target"},
-                            {"source_labels": ["__param_target"], "target_label": "instance"},
-                            {
-                                "target_label": "__address__",
-                                "replacement": "{}:9275".format(exporter_address),
-                            },
-                            {
-                                "target_label": "juju_unit",
-                                # Turn sql-foo-0 or redis_bar_1 into sql-foo/0 or redis-bar/1
-                                "replacement": re.sub(
-                                    r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")
-                                ),
-                            },
-                        ],
-                        "updates": {
-                            "params": {
-                                "command": [cmd],
-                                "ssl": [True],
-                            },
-                            # Override job_name with something specific to the NRPE job
-                            # and the unit it's coming from.
-                            #
-                            # relation.data[unit]["target-id"] contains the monitored
-                            # charm, as `juju-{appname}-{unit_number}
-                            "job_name": "juju_{}_{}_{}_{}_prometheus_scrape".format(
-                                self.model.name,
-                                self.model.uuid[:7],
-                                id.replace("-", "_"),
-                                cmd,
-                            ),
-                        },
-                    },
-                }
+                alerts.append(self._generate_alert(relation, cmd, id, unit))
 
-                nrpe_endpoints.append(job_config)
+                nrpe_endpoints.append(
+                    self._generate_prometheus_job(relation, unit, cmd, exporter_address, id)
+                )
 
-        return nrpe_endpoints
+        return nrpe_endpoints, alerts
+
+    def _generate_alert(self, relation, cmd, id, unit) -> dict:
+        """Generate an on-the-fly Alert rule."""
+        return {
+            "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),
+            # Average over 5 minutes considering a 60 second scrape interval
+            "expr": "avg_over_time(command_status{{juju_unit='{}'}}[5m]) > 1".format(
+                re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-"))
+            ),
+            "for": "0m",
+            "labels": {
+                "severity": "critical",
+                "juju_model": self.model.name,
+                "juju_application": re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-")),
+                "juju_unit": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
+                "nrpe_application": relation.app.name,
+                "nrpe_unit": unit,
+            },
+            "annotations": {
+                "summary": "Unit {{ $labels.juju_unit }}: {{ $labels.command }} critical.",
+                "description": "Check provided by nrpe_exporter in model {{ $labels.juju_model }} is failing.\n"
+                "Failing check = {{ $labels.command }}\n"
+                "Unit = {{ $labels.juju_unit }}\n"
+                "Value = {{ $value }}\n"
+                "Legend:\n"
+                "\tStatusOK        = 0\n"
+                "\tStatusWarning   = 1\n"
+                "\tStatusCritical  = 2\n"
+                "\tStatusUnknown   = 3",
+            },
+        }
+
+    def _generate_prometheus_job(self, relation, unit, cmd, exporter_address, id) -> dict:
+        """Generate an on-the-fly Prometheus scrape job."""
+        # IP address could be 'target-address' OR 'target_address'
+        addr = relation.data[unit].get("target-address", "") or relation.data[unit].get(
+            "target_address", ""
+        )
+
+        return {
+            "app_name": relation.app.name,
+            "target": {
+                unit.name: {
+                    "hostname": addr,
+                    "port": "5666",
+                },
+            },
+            "additional_fields": {
+                "relabel_configs": [
+                    {"source_labels": ["__address__"], "target_label": "__param_target"},
+                    {"source_labels": ["__param_target"], "target_label": "instance"},
+                    {
+                        "target_label": "__address__",
+                        "replacement": "{}:9275".format(exporter_address),
+                    },
+                    {
+                        "target_label": "juju_unit",
+                        # Turn sql-foo-0 or redis_bar_1 into sql-foo/0 or redis-bar/1
+                        "replacement": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
+                    },
+                    {
+                        "action": "labelmap",
+                        "source_labels": ["juju_application"],
+                        "target_label": "check",
+                        "replacement": "check_{}_{}_{}_{}".format(
+                            self.model.name, self.model.uuid[:7], id.replace("-", "_"), cmd
+                        ),
+                    },
+                ],
+                "updates": {
+                    "params": {
+                        "command": [cmd],
+                        "ssl": [True],
+                    },
+                    "metrics_path": "/export",
+                    # Override job_name with something specific to the NRPE job
+                    # and the unit it's coming from.
+                    #
+                    # relation.data[unit]["target-id"] contains the monitored
+                    # charm, as `juju-{appname}-{unit_number}
+                    "job_name": "juju_{}_{}_{}_{}_prometheus_scrape".format(
+                        self.model.name,
+                        self.model.uuid[:7],
+                        id.replace("-", "_"),
+                        cmd,
+                    ),
+                },
+            },
+        }

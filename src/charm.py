@@ -32,12 +32,17 @@ Currently supported interfaces are for:
 
 import logging
 import platform
+import re
+import shutil
 import stat
 import textwrap
 from pathlib import Path
 
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
-from charms.nrpe_exporter.v0.nrpe_exporter import NrpeExporterProvider
+from charms.nrpe_exporter.v0.nrpe_exporter import (
+    NrpeExporterProvider,
+    NrpeTargetsChangedEvent,
+)
 from charms.operator_libs_linux.v1.systemd import (
     daemon_reload,
     service_restart,
@@ -96,17 +101,12 @@ class COSProxyCharm(CharmBase):
             self._downstream_grafana_dashboard_relation_broken,
         )
 
-        self.metrics_aggregator = MetricsEndpointAggregator(
-            self,
-            {
-                "prometheus": "downstream-prometheus-scrape",
-                "scrape_target": "prometheus-target",
-                "alert_rules": "prometheus-rules",
-            },
-        )
+        self.metrics_aggregator = MetricsEndpointAggregator(self)
 
         self.nrpe_exporter = NrpeExporterProvider(self)
-        self.framework.observe(self.nrpe_exporter.on.nrpe_targets_changed, self._forward_nrpe)
+        self.framework.observe(
+            self.nrpe_exporter.on.nrpe_targets_changed, self._on_nrpe_targets_changed
+        )
 
         self.framework.observe(
             self.on.prometheus_target_relation_joined,
@@ -154,7 +154,7 @@ class COSProxyCharm(CharmBase):
         if service_running("nrpe-exporter"):
             service_stop("nrpe-exporter")
 
-        files = ["/usr/local/bin/nrpe_exporter", "/etc/systemd/systemd/nrpe-exporter.service"]
+        files = ["/usr/local/bin/nrpe-exporter", "/etc/systemd/systemd/nrpe-exporter.service"]
 
         for f in files:
             if Path(f).exists():
@@ -164,13 +164,14 @@ class COSProxyCharm(CharmBase):
         self._stored.have_nrpe = True
 
         # Make sure the exporter binary is present with a systemd service
-        if not Path("/usr/local/bin/nrpe_exporter").exists():
+        if not Path("/usr/local/bin/nrpe-exporter").exists():
             arch = platform.machine()
             arch = "amd64" if arch == "x86_64" else arch
             res = "nrpe_exporter-{}".format(arch)
 
             st = Path(res)
             st.chmod(st.stat().st_mode | stat.S_IEXEC)
+            shutil.copy(str(st.absolute()), "/usr/local/bin/nrpe-exporter")
 
             systemd_template = textwrap.dedent(
                 """
@@ -178,7 +179,7 @@ class COSProxyCharm(CharmBase):
                 Description=NRPE Prometheus exporter
 
                 [Service]
-                ExecStart=/usr/local/bin/nrpe_exporter
+                ExecStart=/usr/local/bin/nrpe-exporter
 
                 [Install]
                 WantedBy=multi-user.target
@@ -216,20 +217,40 @@ class COSProxyCharm(CharmBase):
     def _downstream_prometheus_scrape_relation_joined(self, _):
         self._stored.have_prometheus = True
         if self._stored.have_nrpe:
-            self._forward_nrpe(None)
+            self._on_nrpe_targets_changed(None)
         self._set_status()
 
     def _downstream_prometheus_scrape_relation_broken(self, _):
         self._stored.have_prometheus = False
         self._set_status()
 
-    def _forward_nrpe(self, _):
+    def _on_nrpe_targets_changed(self, event):
         """Send NRPE jobs over to MetricsEndpointAggregator."""
+        if event and isinstance(event, NrpeTargetsChangedEvent):
+            removed_targets = event.removed_targets
+            for r in removed_targets:
+                self.metrics_aggregator.remove_prometheus_jobs(r)
+
+            removed_alerts = event.removed_alerts
+            for a in removed_alerts:
+                self.metrics_aggregator.remove_alert_rules(
+                    self.metrics_aggregator.group_name(a["labels"]["juju_unit"]),  # type: ignore
+                    a["labels"]["juju_unit"],  # type: ignore
+                )
+
         nrpes = self.nrpe_exporter.endpoints()
 
         for nrpe in nrpes:
-            self.metrics_aggregator._set_target_job_data(
+            self.metrics_aggregator.set_target_job_data(
                 nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
+            )
+
+        alerts = self.nrpe_exporter.alerts()
+        for alert in alerts:
+            self.metrics_aggregator.set_alert_rule_data(
+                re.sub(r"/", "_", alert["labels"]["juju_unit"]),
+                alert,
+                label_rules=False,
             )
 
     def _set_status(self):
