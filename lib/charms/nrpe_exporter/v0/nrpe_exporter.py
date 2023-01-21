@@ -306,7 +306,7 @@ class NrpeExporterProvider(Object):
         self._stored.alert_rules = alerts
 
         self.on.nrpe_targets_changed.emit(
-            relation_id=rel_id, removed_endpoints=removed_endpoints, removed_alerts=removed_alerts
+            relation_id=rel_id, removed_targets=removed_endpoints, removed_alerts=removed_alerts
         )
 
     def endpoints(self) -> list:
@@ -318,7 +318,7 @@ class NrpeExporterProvider(Object):
         """
         return _type_convert_stored(self._stored.endpoints)
 
-    def generated_alerts(self) -> list:
+    def alerts(self) -> list:
         """Fetch the list of automatically generated alert rules.
 
         Returns:
@@ -404,6 +404,9 @@ class NrpeExporterProvider(Object):
                 logger.warning("Received monitor data with an unknown format. Skipping.")
                 continue
 
+            if not isinstance(monitor_data, dict):
+                logger.warning("Monitor data is not a dict after parsing. Skipping.")
+                continue
             jobs = find_key(monitor_data, "nrpe")
             for val in jobs.values():
                 if isinstance(val, str):
@@ -416,7 +419,7 @@ class NrpeExporterProvider(Object):
                 )
                 id = re.sub(r"^juju[-_]", "", id)
 
-                alerts.append(self._generate_alert(relation, cmd, id))
+                alerts.append(self._generate_alert(relation, cmd, id, unit))
 
                 nrpe_endpoints.append(
                     self._generate_prometheus_job(relation, unit, cmd, exporter_address, id)
@@ -424,7 +427,7 @@ class NrpeExporterProvider(Object):
 
         return nrpe_endpoints, alerts
 
-    def _generate_alert(self, relation, cmd, id) -> dict:
+    def _generate_alert(self, relation, cmd, id, unit) -> dict:
         """Generate an on-the-fly Alert rule."""
         return {
             "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),
@@ -436,8 +439,10 @@ class NrpeExporterProvider(Object):
             "labels": {
                 "severity": "critical",
                 "juju_model": self.model.name,
-                "juju_appliation": relation.app.name,
+                "juju_application": re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-")),
                 "juju_unit": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
+                "nrpe_application": relation.app.name,
+                "nrpe_unit": unit,
             },
             "annotations": {
                 "summary": "Unit {{ $labels.juju_unit }}: {{ $labels.command }} critical.",

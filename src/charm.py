@@ -32,6 +32,7 @@ Currently supported interfaces are for:
 
 import logging
 import platform
+import re
 import shutil
 import stat
 import textwrap
@@ -233,7 +234,7 @@ class COSProxyCharm(CharmBase):
             removed_alerts = event.removed_alerts
             for a in removed_alerts:
                 self.metrics_aggregator.remove_alert_rules(
-                    self.metrics_aggregator.group_name(a["labels"]["juju_application"]),  # type: ignore
+                    self.metrics_aggregator.group_name(a["labels"]["juju_unit"]),  # type: ignore
                     a["labels"]["juju_unit"],  # type: ignore
                 )
 
@@ -247,8 +248,8 @@ class COSProxyCharm(CharmBase):
         alerts = self.nrpe_exporter.alerts()
         for alert in alerts:
             self.metrics_aggregator.set_alert_rule_data(
-                alert["labels"]["juju_application"],
-                alert["labels"]["juju_unit"],
+                re.sub(r"/", "_", alert["labels"]["juju_unit"]),
+                alert,
                 label_rules=False,
             )
 
