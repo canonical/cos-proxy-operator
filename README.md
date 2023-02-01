@@ -12,7 +12,7 @@ Proxying support is provided for:
 * Prometheus
 * Grafana Dashboards
 * NRPE (through [nrpe_exporter](https://github.com/canonical/nrpe_exporter), which sends
-NRPE results to Prometheus
+  NRPE results to Prometheus)
 
 ## Deployment
 
