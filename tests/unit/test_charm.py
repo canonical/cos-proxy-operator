@@ -119,7 +119,7 @@ DUMMY_FIXED_2 = {
     '"${prometheusds}", "definition": '
     '"label_values(up{juju_model=\\"$juju_model\\",juju_model_uuid=\\"$juju_model_uuid\\",juju_application=\\"$juju_application\\"},host)", '
     '"description": null, "error": null, "hide": 0, "includeAll": '
-    'false, "label": "hosts", "multi": true, "name": "host", '
+    'true, "label": "hosts", "multi": true, "name": "host", '
     '"options": [], "query": {"query": '
     '"label_values(up{juju_model=\\"$juju_model\\",juju_model_uuid=\\"$juju_model_uuid\\",juju_application=\\"$juju_application\\"},host)", '
     '"refId": "StandardVariableQuery"}, "refresh": 1, "regex": "", '
