@@ -180,7 +180,7 @@ class VectorEvents(ObjectEvents):
 
 
 class VectorProvider(Object):
-    """An provider for Vector, an observability swiss-army knife."""
+    """A provider for Vector, an observability swiss-army knife."""
 
     on = VectorEvents()
 
