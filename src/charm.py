@@ -34,9 +34,12 @@ import logging
 import platform
 import re
 import shutil
+import socket
 import stat
 import textwrap
+from csv import DictReader, DictWriter
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.nrpe_exporter.v0.nrpe_exporter import (
@@ -50,6 +53,7 @@ from charms.operator_libs_linux.v1.systemd import (
     service_stop,
 )
 from charms.prometheus_k8s.v0.prometheus_scrape import MetricsEndpointAggregator
+from charms.vector.v0.vector import VectorProvider
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
@@ -77,6 +81,8 @@ class COSProxyCharm(CharmBase):
             have_prometheus=False,
             have_targets=False,
             have_nrpe=False,
+            have_loki=False,
+            have_filebeat=False,
         )
 
         self._dashboard_aggregator = GrafanaDashboardAggregator(self)
@@ -107,6 +113,10 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(
             self.nrpe_exporter.on.nrpe_targets_changed, self._on_nrpe_targets_changed
         )
+
+        self.vector = VectorProvider(self)
+        self.framework.observe(self.on.filebeat_relation_joined, self._on_filebeat_relation_joined)
+        self.framework.observe(self.vector.on.config_changed, self._write_vector_config)
 
         self.framework.observe(
             self.on.prometheus_target_relation_joined,
@@ -198,6 +208,118 @@ class COSProxyCharm(CharmBase):
         self._stored.have_nrpe = False
         self._set_status()
 
+    def _on_filebeat_relation_joined(self, event):
+        self._stored.have_filebeat = True
+
+        # Make sure the vector binary is present with a systemd service
+        if not Path("/usr/local/bin/vector").exists():
+            res = "vector"
+
+            st = Path(res)
+            st.chmod(st.stat().st_mode | stat.S_IEXEC)
+            shutil.copy(str(st.absolute()), "/usr/local/bin/vector")
+
+            systemd_template = textwrap.dedent(
+                """
+                [Unit]
+                Description="Vector - An observability pipelines tool"
+                Documentation=https://vector.dev/
+                Wants=network-online.target
+                After=network-online.target
+
+                [Service]
+                Type=exec
+                Environment="LOG_FORMAT=json"
+                Environment="VECTOR_CONFIG_YAML=/etc/vector/aggregator/vector.yaml"
+                ExecStartPre=/usr/local/bin/vector validate
+                ExecStart=/usr/local/bin/vector -w
+                ExecReload=/usr/local/bin/vector validate
+                ExecReload=/bin/kill -HUP $MAINPID
+                Restart=always
+                AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+                [Install]
+                WantedBy=multi-user.target
+                """
+            )
+
+            with open("/etc/systemd/system/vector.service", "w") as f:
+                f.write(systemd_template)
+
+            self._modify_enrichment_file(init=True)
+
+            self._write_vector_config(event)
+
+            daemon_reload()
+            service_restart("vector.service")
+
+        event.relation.data[self.unit]["private-address"] = socket.getfqdn()
+        event.relation.data[self.unit]["port"] = "5044"
+
+    def _modify_enrichment_file(
+        self, init: Optional[bool] = False, endpoints: Optional[List[Dict[str, Any]]] = None
+    ):
+        fieldnames = ["composite_key", "juju_application", "juju_unit", "command", "ipaddr"]
+        if init or not Path("/etc/vector/nrpe_lookup.csv").exists():
+            with open("/etc/vector/nrpe_lookup.csv", "w", newline="") as f:
+                writer = DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+
+        if endpoints:
+            contents = []
+            current = [
+                f"{endpoint['target']['hostname']}_{endpoint['additional_fields']['updates']['params']['command']}"
+                for endpoint in endpoints
+            ]
+            with open("/etc/vector/nrpe_lookup.csv", newline="") as f:
+                reader = DictReader(f)
+                contents = [r for r in reader if r["composite_key"] in current]
+
+                for endpoint in endpoints:
+                    contents.append(
+                        {
+                            "composite_key": f"{endpoint['ipaddr']}_{endpoint['command']}",
+                            "juju_application": endpoint["app_name"],
+                            "juju_unit": next(endpoint["target"].keys()),
+                            "command": endpoint["additional_fields"]["updates"]["params"][
+                                "command"
+                            ],
+                            "ipaddr": endpoint["target"]["hostname"],
+                        }
+                    )
+
+            if contents:
+                with open("/etc/vector/nrpe_lookup.csv", "w", newline="") as f:
+                    writer = DictWriter(f, fieldnames=fieldnames)
+                    writer.writeheader()
+
+                    for c in contents:
+                        writer.writerow(c)
+
+    def _write_vector_config(self, _):
+        if not Path("/var/lib/vector").exists():
+            Path("/var/lib/vector").mkdir(parents=True, exist_ok=True)
+
+        vector_config = Path("/etc/vector/aggregator/vector.yaml")
+        if not vector_config.exists():
+            vector_config.parent.mkdir(parents=True, exist_ok=True)
+
+        config = self.vector.config
+        with vector_config.open("w") as f:
+            f.write(config)
+
+    def _filebeat_relation_broken(self, _):
+        self._stored.have_filebeat = False
+        self._set_status()
+
+    def _downstream_logging_relation_joined(self, _):
+        self._stored.have_loki = True
+        self._set_status()
+
+    def _downstream_logging_relation_broken(self, _):
+        self._stored.have_loki = False
+        self._set_status()
+
     def _downstream_grafana_dashboard_relation_joined(self, _):
         self._stored.have_grafana = True
         self._set_status()
@@ -239,6 +361,7 @@ class COSProxyCharm(CharmBase):
                 )
 
         nrpes = self.nrpe_exporter.endpoints()
+        self._modify_enrichment_file(endpoints=nrpes)
 
         for nrpe in nrpes:
             self.metrics_aggregator.set_target_job_data(
@@ -259,6 +382,11 @@ class COSProxyCharm(CharmBase):
             self._stored.have_dashboards and not self._stored.have_grafana
         ):
             message = " one of (Grafana|dashboard) relation(s) "
+
+        if (self._stored.have_loki and not self._stored.have_filebeat) or (
+            self._stored.have_filebeat and not self._stored.have_loki
+        ):
+            message = " one of (Loki|filebeat) relation(s) "
 
         if (
             self._stored.have_prometheus
