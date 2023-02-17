@@ -119,6 +119,16 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(self.vector.on.config_changed, self._write_vector_config)
 
         self.framework.observe(
+            self.on.downstream_logging_relation_joined,
+            self._downstream_logging_relation_joined,
+        )
+
+        self.framework.observe(
+            self.on.downstream_logging_relation_broken,
+            self._downstream_logging_relation_broken,
+        )
+
+        self.framework.observe(
             self.on.prometheus_target_relation_joined,
             self._prometheus_target_relation_joined,
         )
@@ -246,9 +256,8 @@ class COSProxyCharm(CharmBase):
             with open("/etc/systemd/system/vector.service", "w") as f:
                 f.write(systemd_template)
 
-            self._modify_enrichment_file(init=True)
-
             self._write_vector_config(event)
+            self._modify_enrichment_file()
 
             daemon_reload()
             service_restart("vector.service")
@@ -256,40 +265,51 @@ class COSProxyCharm(CharmBase):
         event.relation.data[self.unit]["private-address"] = socket.getfqdn()
         event.relation.data[self.unit]["port"] = "5044"
 
-    def _modify_enrichment_file(
-        self, init: Optional[bool] = False, endpoints: Optional[List[Dict[str, Any]]] = None
-    ):
+    def _modify_enrichment_file(self, endpoints: Optional[List[Dict[str, Any]]] = None):
+        path = Path("/etc/vector/nrpe_lookup.csv")
         fieldnames = ["composite_key", "juju_application", "juju_unit", "command", "ipaddr"]
-        if init or not Path("/etc/vector/nrpe_lookup.csv").exists():
-            with open("/etc/vector/nrpe_lookup.csv", "w", newline="") as f:
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", newline="") as f:
                 writer = DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
 
         if endpoints:
             contents = []
             current = [
-                f"{endpoint['target']['hostname']}_{endpoint['additional_fields']['updates']['params']['command']}"
+                f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
+                + f"{endpoint['additional_fields']['updates']['params']['command'][0]}"
                 for endpoint in endpoints
             ]
-            with open("/etc/vector/nrpe_lookup.csv", newline="") as f:
+            with path.open(newline="") as f:
                 reader = DictReader(f)
                 contents = [r for r in reader if r["composite_key"] in current]
 
                 for endpoint in endpoints:
+                    unit = next(
+                        iter(
+                            [
+                                c["replacement"]
+                                for c in endpoint["additional_fields"]["relabel_configs"]
+                                if c["target_label"] == "juju_unit"
+                            ]
+                        )
+                    )
                     contents.append(
                         {
-                            "composite_key": f"{endpoint['ipaddr']}_{endpoint['command']}",
-                            "juju_application": endpoint["app_name"],
-                            "juju_unit": next(endpoint["target"].keys()),
+                            "composite_key": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
+                            + f"{endpoint['additional_fields']['updates']['params']['command'][0]}",
+                            "juju_application": re.sub(r"^(.*?)/\d+$", r"\1", unit),
+                            "juju_unit": unit,
                             "command": endpoint["additional_fields"]["updates"]["params"][
                                 "command"
-                            ],
-                            "ipaddr": endpoint["target"]["hostname"],
+                            ][0],
+                            "ipaddr": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}",
                         }
                     )
 
             if contents:
-                with open("/etc/vector/nrpe_lookup.csv", "w", newline="") as f:
+                with path.open("w", newline="") as f:
                     writer = DictWriter(f, fieldnames=fieldnames)
                     writer.writeheader()
 

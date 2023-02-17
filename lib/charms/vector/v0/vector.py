@@ -13,7 +13,9 @@ Vector also provides an equivalent to `node_exporter` so metrics from
 the host itself can be collected.
 """
 
+import json
 import logging
+import re
 from typing import Optional
 
 import yaml
@@ -43,27 +45,23 @@ api:
   enabled: true
   address: "[::]:8686"
   playground: false
-enrichment_tables.nrpe:
-  type: file
-enrichment_tables.nrpe.file:
-  path: /etc/vector/nrpe_lookup.csv
-  encoding:
-    type: csv
-enrichment_tables.nrpe.schema:
-  composite_key: string
-  juju_application: string
-  juju_unit: string
-  command: string
-  ipaddr: string
-sources:
-  file:
-    include:
-      - "/var/log/**/*.log"
+enrichment_tables:
+  nrpe:
     type: file
-    ignore_checkpoints: true
+    file:
+      path: /etc/vector/nrpe_lookup.csv
+      encoding:
+        type: csv
+    schema:
+      composite_key: string
+      juju_application: string
+      juju_unit: string
+      command: string
+      ipaddr: string
+sources:
   nrpe-logs:
     type: journald
-    since_now: null
+    since_now: false
     current_boot_only: true
     include_units:
       - nrpe-exporter
@@ -85,13 +83,15 @@ transforms:
   enrich-nrpe:
     type: remap
     inputs:
-      - nrpe
+      - nrpe-logs
     source: |-
-      del(.source_type)
       fields = parse_key_value!(.message)
 
-      key = join!([fields.address, "_", fields.command])
-      row = get_enrichment_table_record("nrpe", {"composite_key": key}) ?? key
+      . = fields
+
+      composite_key = join!([fields.address, "_", fields.command])
+      .composite_key = composite_key
+      row = get_enrichment_table_record!("nrpe", {"composite_key": composite_key})
 
       .juju_unit = row.juju_unit
       .juju_application = row.juju_application
@@ -109,16 +109,24 @@ transforms:
       del(.@metadata)
       del(.prospector)
       del(.log)
-      del(.fields.type)
       del(.input)
       del(.offset)
-      del(.beat.version)
+      del(.source_type)
+      del(.host)
 
-      .fields.hostname = del(.beat.hostname)
+      .timestamp = del(.@timestamp)
+      .filename = del(.source)
+
+      .hostname = del(.beat.hostname)
       del(.beat)
 
-      .fields.juju_unit = del(.fields.juju_principal_unit)
-      .fields.juju_application = replace!(.fields.juju_unit, r'^(?P<app>.*?)/\d+$', "$app")
+      .juju_model = .fields.juju_model_name
+      .juju_model_uuid = .fields.juju_model_uuid
+      .juju_unit = .fields.juju_principal_unit
+      del(.fields)
+
+      # `$` is interpolated in the actual config, so use `$$` to use `$capture_group`
+      .juju_application = replace!(.juju_unit, r'^(?P<app>.*?)/\d+$', "$$app")
 
       structured =
         parse_syslog(.message) ??
@@ -127,11 +135,8 @@ transforms:
         {"message": .message}
       . = merge(., structured)
 
-      del(.host)
-      .timestamp = del(.@timestamp)
-
       . = flatten(.)
-      . = map_keys(.) -> |key| { replace(key, r'^.*?\.(?P<rest>.*)', "$rest") }
+      . = map_keys(.) -> |key| { replace(key, r'^.*?\.(?P<rest>.*)', "$$rest") }
 sinks:
   prom_exporter:
     type: prometheus_exporter
@@ -147,13 +152,6 @@ sinks:
     encoding:
       codec: json
     target: stdout
-  blackhole:
-    type: blackhole
-    inputs:
-      - file
-    print_interval_secs: 10
-    acknowledgements:
-      enabled: true
 """
 
 
@@ -236,7 +234,7 @@ class VectorProvider(Object):
                     continue
                 for unit in relation.units:
                     if endpoint := relation.data[unit].get("endpoint", ""):
-                        loki_endpoints.append(endpoint)
+                        loki_endpoints.append(json.loads(endpoint))
 
         if loki_endpoints:
             for idx, endpoint in enumerate(loki_endpoints):
@@ -244,9 +242,23 @@ class VectorProvider(Object):
                     {
                         f"loki-{idx}": {
                             "type": "loki",
-                            "inputs": ["logstash", "file", "enrich-nrpe"],
-                            "endpoint": endpoint,
+                            "inputs": ["mangle-logstash", "enrich-nrpe"],
+                            # vector wants the base URL, use that
+                            "endpoint": re.sub(
+                                r"^(.*?)/loki/api/v1/push$", r"\1", endpoint["url"]
+                            ),
                             "acknowledgements": {"enabled": True},
+                            "out_of_order_action": "accept",
+                            "encoding": {"codec": "json"},
+                            "labels": {
+                                "juju_model": "{{ juju_model }}",
+                                "juju_unit": "{{ juju_unit }}",
+                                "juju_application": "{{ juju_application }}",
+                                "ip_address": "{{ ip_address }}",
+                                "filename": "{{ filename }}",
+                                "hostname": "{{ hostname }}",
+                                "command": "{{ command }}",
+                            },
                         }
                     }
                 )
