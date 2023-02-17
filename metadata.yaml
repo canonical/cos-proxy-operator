@@ -26,7 +26,11 @@ provides:
     interface: prometheus_scrape
   downstream-grafana-dashboard:
     interface: grafana_dashboard
+  filebeat:
+    interface: elastic-beats
 requires:
+  downstream-logging:
+    interface: loki_push_api
   prometheus-target:
     interface: http
   prometheus-rules:
