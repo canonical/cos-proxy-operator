@@ -432,8 +432,8 @@ class NrpeExporterProvider(Object):
         return {
             "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),
             # Average over 5 minutes considering a 60 second scrape interval
-            "expr": "avg_over_time(command_status{{juju_unit='{}'}}[5m]) > 1".format(
-                re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-"))
+            "expr": "avg_over_time(command_status{{juju_unit='{}',command='{}'}}[5m]) > 1".format(
+                re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")), cmd
             ),
             "for": "0m",
             "labels": {
