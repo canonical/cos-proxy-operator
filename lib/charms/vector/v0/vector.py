@@ -38,6 +38,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RELATION_NAMES = {"filebeat": "elastic-beats", "downstream-logging": "loki_push_api"}
 
+# `$` is interpolated in the actual config, so use `$$` to use `$capture_group`
+# comment is here because otherwise Python's YAML serializer does the wrong thing,
+# and VRL tries to interpret it
 DEFAULT_VECTOR_CONFIG = """
 ---
 data_dir: /var/lib/vector
@@ -125,7 +128,6 @@ transforms:
       .juju_unit = .fields.juju_principal_unit
       del(.fields)
 
-      # `$` is interpolated in the actual config, so use `$$` to use `$capture_group`
       .juju_application = replace!(.juju_unit, r'^(?P<app>.*?)/\d+$', "$$app")
 
       structured =

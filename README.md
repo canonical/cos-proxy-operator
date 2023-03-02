@@ -93,6 +93,36 @@ juju relate -m reactive prometheus-k8s cos-proxy:downstream-prometheus-scrape
 juju relate -m reactive grafana cos-proxy:downstream-grafana-dashboard
 ```
 
+A complete set of relations on the from the consuming model will appear as:
+
+```
+Model       Controller        Cloud/Region         Version  SLA          Timestamp
+reactive    overlord          localhost/localhost  3.0.3    unsupported  20:40:45+01:00
+
+SAAS     Status  Store               URL
+grafana  active  microk8s            admin/cos.grafana
+loki     active  microk8s            admin/cos.loki
+metrics  active  microk8s            admin/cos.metrics
+
+App        Version  Status  Scale  Charm      Channel  Rev  Exposed  Message
+cos-proxy  n/a      active      1  cos-proxy  edge      15  no       
+filebeat   6.8.23   active      1  filebeat   stable    49  no       Filebeat ready.
+nrpe                active      1  nrpe       stable    97  no       Ready
+telegraf            active      1  telegraf   stable    65  no       Monitoring ubuntu/0 (source version/commit 23.01)
+ubuntu     20.04    active      1  ubuntu     stable    21  no       
+
+Unit           Workload  Agent  Machine  Public address  Ports          Message
+cos-proxy/0*   active    idle   1        10.218.235.237                 
+ubuntu/0*      active    idle   0        10.218.235.198                 
+  filebeat/0*  active    idle            10.218.235.198                 Filebeat ready.
+  nrpe/0*      active    idle            10.218.235.198  icmp,5666/tcp  Ready
+  telegraf/0*  active    idle            10.218.235.198  9103/tcp       Monitoring ubuntu/0 (source version/commit 23.01)
+
+Machine  State    Address         Inst id        Series  AZ  Message
+0        started  10.218.235.198  juju-732594-0  focal       Running
+1        started  10.218.235.237  juju-732594-1  focal       Running
+```
+
 ## NRPE Exporting
 NRPE targets may appear on multiple relations. To capture all jobs, `cos-proxy` should be related to
 **BOTH** an existing reactive NRPE subordinate charm, as well as the application which that charm is subordinated to,

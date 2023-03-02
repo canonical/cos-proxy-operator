@@ -434,6 +434,9 @@ class NrpeExporterProvider(Object):
             # Average over 5 minutes considering a 60 second scrape interval
             "expr": "avg_over_time(command_status{{juju_unit='{}',command='{}'}}[5m]) > 1".format(
                 re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")), cmd
+            )
+            + " or (absent_over_time(up{{juju_unit='{}'}}[10m]) == 1)".format(
+                re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
             ),
             "for": "0m",
             "labels": {
@@ -477,6 +480,7 @@ class NrpeExporterProvider(Object):
                 "relabel_configs": [
                     {"source_labels": ["__address__"], "target_label": "__param_target"},
                     {"source_labels": ["__param_target"], "target_label": "instance"},
+                    {"source_labels": ["__param_command"], "target_label": "command"},
                     {
                         "target_label": "__address__",
                         "replacement": "{}:9275".format(exporter_address),
