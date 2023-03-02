@@ -30,6 +30,7 @@ Currently supported interfaces are for:
     * NRPE Endpoints
 """
 
+import json
 import logging
 import platform
 import re
@@ -40,6 +41,7 @@ import textwrap
 from csv import DictReader, DictWriter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib import request
 
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.nrpe_exporter.v0.nrpe_exporter import (
@@ -323,6 +325,30 @@ class COSProxyCharm(CharmBase):
         vector_config = Path("/etc/vector/aggregator/vector.yaml")
         if not vector_config.exists():
             vector_config.parent.mkdir(parents=True, exist_ok=True)
+
+        loki_endpoints = []
+        for relation in self.model.relations["downstream-logging"]:
+            if not relation.units:
+                continue
+            for unit in relation.units:
+                if endpoint := relation.data[unit].get("endpoint", ""):
+                    loki_endpoints.append(json.loads(endpoint)["url"])
+
+        if loki_endpoints:
+            for e in loki_endpoints:
+                try:
+                    dest = re.sub(r"^(.*?/loki/api/v1)/push$", r"\1/series", e)
+                    r = request.urlopen(dest)
+                    if r.code != 200:
+                        self.unit.status = BlockedStatus(
+                            "One or more Loki endpoints is not reachable!"
+                        )
+                        return
+                except request.HTTPError:
+                    self.unit.status = BlockedStatus(
+                        "One or more Loki endpoints is not reachable!"
+                    )
+                    return
 
         config = self.vector.config
         with vector_config.open("w") as f:
