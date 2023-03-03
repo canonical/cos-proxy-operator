@@ -490,14 +490,6 @@ class NrpeExporterProvider(Object):
                         # Turn sql-foo-0 or redis_bar_1 into sql-foo/0 or redis-bar/1
                         "replacement": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
                     },
-                    {
-                        "action": "labelmap",
-                        "source_labels": ["juju_application"],
-                        "target_label": "check",
-                        "replacement": "check_{}_{}_{}_{}".format(
-                            self.model.name, self.model.uuid[:7], id.replace("-", "_"), cmd
-                        ),
-                    },
                 ],
                 "updates": {
                     "params": {
