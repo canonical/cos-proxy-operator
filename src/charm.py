@@ -87,10 +87,7 @@ class COSProxyCharm(CharmBase):
             have_filebeat=False,
         )
 
-        self._dashboard_aggregator = GrafanaDashboardAggregator(
-           self,
-           resolve_addresses=True,
-        )
+        self._dashboard_aggregator = GrafanaDashboardAggregator(self)
 
         self.framework.observe(
             self.on.dashboards_relation_joined,
@@ -112,7 +109,10 @@ class COSProxyCharm(CharmBase):
             self._downstream_grafana_dashboard_relation_broken,
         )
 
-        self.metrics_aggregator = MetricsEndpointAggregator(self)
+        self.metrics_aggregator = MetricsEndpointAggregator(
+           self,
+          resolve_addresses=True,
+        )
 
         self.nrpe_exporter = NrpeExporterProvider(self)
         self.framework.observe(
