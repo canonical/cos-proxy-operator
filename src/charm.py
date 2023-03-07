@@ -87,7 +87,10 @@ class COSProxyCharm(CharmBase):
             have_filebeat=False,
         )
 
-        self._dashboard_aggregator = GrafanaDashboardAggregator(self)
+        self._dashboard_aggregator = GrafanaDashboardAggregator(
+           self,
+           resolve_addresses=True,
+        )
 
         self.framework.observe(
             self.on.dashboards_relation_joined,
