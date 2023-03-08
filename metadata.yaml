@@ -21,6 +21,7 @@ tags:
 
 series:
   - focal
+  - jammy
 provides:
   downstream-prometheus-scrape:
     interface: prometheus_scrape
