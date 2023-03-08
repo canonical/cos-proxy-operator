@@ -80,7 +80,7 @@ sources:
   internal_metrics:
     type: internal_metrics
   logstash:
-    address: "[::]:5044"
+    address: "0.0.0.0:5044"
     type: logstash
 transforms:
   enrich-nrpe:
@@ -249,6 +249,7 @@ class VectorProvider(Object):
                             "endpoint": re.sub(
                                 r"^(.*?)/loki/api/v1/push$", r"\1", endpoint["url"]
                             ),
+                            "healthcheck": {"enabled": False},
                             "acknowledgements": {"enabled": True},
                             "out_of_order_action": "accept",
                             "encoding": {"codec": "json"},
