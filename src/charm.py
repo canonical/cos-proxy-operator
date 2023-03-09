@@ -200,9 +200,14 @@ class COSProxyCharm(CharmBase):
                 """
                 [Unit]
                 Description=NRPE Prometheus exporter
+                Wants=network-online.target
+                After=network-online.target
 
                 [Service]
+                LimitNPROC=infinity
+                LimitNOFILE=infinity
                 ExecStart=/usr/local/bin/nrpe-exporter
+                Restart=always
 
                 [Install]
                 WantedBy=multi-user.target
@@ -247,6 +252,8 @@ class COSProxyCharm(CharmBase):
 
                 [Service]
                 Type=exec
+                LimitNPROC=infinity
+                LimitNOFILE=infinity
                 Environment="LOG_FORMAT=json"
                 Environment="VECTOR_CONFIG_YAML=/etc/vector/aggregator/vector.yaml"
                 ExecStartPre=/usr/local/bin/vector validate
