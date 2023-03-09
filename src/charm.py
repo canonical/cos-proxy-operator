@@ -51,6 +51,7 @@ from charms.nrpe_exporter.v0.nrpe_exporter import (
 from charms.operator_libs_linux.v1.systemd import (
     daemon_reload,
     service_restart,
+    service_resume,
     service_running,
     service_stop,
 )
@@ -109,7 +110,7 @@ class COSProxyCharm(CharmBase):
             self._downstream_grafana_dashboard_relation_broken,
         )
 
-        self.metrics_aggregator = MetricsEndpointAggregator(self)
+        self.metrics_aggregator = MetricsEndpointAggregator(self, resolve_addresses=True)
 
         self.nrpe_exporter = NrpeExporterProvider(self)
         self.framework.observe(
@@ -199,9 +200,14 @@ class COSProxyCharm(CharmBase):
                 """
                 [Unit]
                 Description=NRPE Prometheus exporter
+                Wants=network-online.target
+                After=network-online.target
 
                 [Service]
+                LimitNPROC=infinity
+                LimitNOFILE=infinity
                 ExecStart=/usr/local/bin/nrpe-exporter
+                Restart=always
 
                 [Install]
                 WantedBy=multi-user.target
@@ -213,6 +219,11 @@ class COSProxyCharm(CharmBase):
 
             daemon_reload()
             service_restart("nrpe-exporter.service")
+
+            # This seems dumb, since it's actually unmasking and setting it to
+            # `enable --now`, but it's the only method which ACTUALLY enables it
+            # so it will survive reboots
+            service_resume("nrpe-exporter.service")
 
         self._set_status()
 
@@ -241,6 +252,8 @@ class COSProxyCharm(CharmBase):
 
                 [Service]
                 Type=exec
+                LimitNPROC=infinity
+                LimitNOFILE=infinity
                 Environment="LOG_FORMAT=json"
                 Environment="VECTOR_CONFIG_YAML=/etc/vector/aggregator/vector.yaml"
                 ExecStartPre=/usr/local/bin/vector validate
@@ -263,6 +276,7 @@ class COSProxyCharm(CharmBase):
 
             daemon_reload()
             service_restart("vector.service")
+            service_resume("vector.service")
 
         event.relation.data[self.unit]["private-address"] = socket.getfqdn()
         event.relation.data[self.unit]["port"] = "5044"
