@@ -117,11 +117,11 @@ DUMMY_FIXED_2 = {
     "charm": "dashboard-app-2",
     "content": '{"templating": {"list": [{"allValue": null, "datasource": '
     '"${prometheusds}", "definition": '
-    '"label_values(up{juju_model=\\"$juju_model\\",juju_model_uuid=\\"$juju_model_uuid\\",juju_application=\\"$juju_application\\"},host)", '
+    '"label_values(up{juju_model=~\\"$juju_model\\",juju_model_uuid=~\\"$juju_model_uuid\\",juju_application=~\\"$juju_application\\"},host)", '
     '"description": null, "error": null, "hide": 0, "includeAll": '
     'true, "label": "hosts", "multi": true, "name": "host", '
     '"options": [], "query": {"query": '
-    '"label_values(up{juju_model=\\"$juju_model\\",juju_model_uuid=\\"$juju_model_uuid\\",juju_application=\\"$juju_application\\"},host)", '
+    '"label_values(up{juju_model=~\\"$juju_model\\",juju_model_uuid=~\\"$juju_model_uuid\\",juju_application=~\\"$juju_application\\"},host)", '
     '"refId": "StandardVariableQuery"}, "refresh": 1, "regex": "", '
     '"skipUrlSync": false, "sort": 1, "tagValuesQuery": "", "tags": '
     '[], "tagsQuery": "", "type": "query", "useTags": false}]}, '
@@ -239,6 +239,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "juju_application": "target-app",
                             "juju_unit": "target-app/0",
                             "host": "scrape_target_0",
+                            "dns_name": "scrape_target_0",
                         },
                     }
                 ],
@@ -282,6 +283,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "juju_application": "target-app",
                             "juju_unit": "target-app/0",
                             "host": "scrape_target_0",
+                            "dns_name": "scrape_target_0",
                         },
                     }
                 ],
@@ -438,6 +440,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "juju_application": "target-app-1",
                             "juju_unit": "target-app-1/0",
                             "host": "scrape_target_0",
+                            "dns_name": "scrape_target_0",
                         },
                     }
                 ],
@@ -454,6 +457,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "juju_application": "target-app-2",
                             "juju_unit": "target-app-2/0",
                             "host": "scrape_target_1",
+                            "dns_name": "scrape_target_1",
                         },
                     }
                 ],
@@ -594,6 +598,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "juju_application": "target-app-1",
                             "juju_unit": "target-app-1/0",
                             "host": "scrape_target_0",
+                            "dns_name": "scrape_target_0",
                         },
                     }
                 ],
@@ -722,6 +727,7 @@ class COSProxyCharmTest(unittest.TestCase):
                             "juju_application": "target-app",
                             "juju_unit": "target-app/0",
                             "host": "scrape_target_0",
+                            "dns_name": "scrape_target_0",
                         },
                     }
                 ],
