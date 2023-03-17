@@ -218,6 +218,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
+
 LIBPATCH = 26
 
 logger = logging.getLogger(__name__)
@@ -256,7 +257,7 @@ TOPOLOGY_TEMPLATE_DROPDOWNS = [  # type: ignore
     {
         "allValue": None,
         "datasource": "${prometheusds}",
-        "definition": 'label_values(up{juju_model="$juju_model"},juju_model_uuid)',
+        "definition": 'label_values(up{juju_model=~"$juju_model"},juju_model_uuid)',
         "description": None,
         "error": None,
         "hide": 0,
@@ -265,7 +266,7 @@ TOPOLOGY_TEMPLATE_DROPDOWNS = [  # type: ignore
         "multi": True,
         "name": "juju_model_uuid",
         "query": {
-            "query": 'label_values(up{juju_model="$juju_model"},juju_model_uuid)',
+            "query": 'label_values(up{juju_model=~"$juju_model"},juju_model_uuid)',
             "refId": "StandardVariableQuery",
         },
         "refresh": 1,
@@ -281,7 +282,7 @@ TOPOLOGY_TEMPLATE_DROPDOWNS = [  # type: ignore
     {
         "allValue": None,
         "datasource": "${prometheusds}",
-        "definition": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid"},juju_application)',
+        "definition": 'label_values(up{juju_model=~"$juju_model",juju_model_uuid=~"$juju_model_uuid"},juju_application)',
         "description": None,
         "error": None,
         "hide": 0,
@@ -290,7 +291,7 @@ TOPOLOGY_TEMPLATE_DROPDOWNS = [  # type: ignore
         "multi": True,
         "name": "juju_application",
         "query": {
-            "query": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid"},juju_application)',
+            "query": 'label_values(up{juju_model=~"$juju_model",juju_model_uuid=~"$juju_model_uuid"},juju_application)',
             "refId": "StandardVariableQuery",
         },
         "refresh": 1,
@@ -306,7 +307,7 @@ TOPOLOGY_TEMPLATE_DROPDOWNS = [  # type: ignore
     {
         "allValue": None,
         "datasource": "${prometheusds}",
-        "definition": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid",juju_application="$juju_application"},juju_unit)',
+        "definition": 'label_values(up{juju_model=~"$juju_model",juju_model_uuid=~"$juju_model_uuid",juju_application=~"$juju_application"},juju_unit)',
         "description": None,
         "error": None,
         "hide": 0,
@@ -315,7 +316,7 @@ TOPOLOGY_TEMPLATE_DROPDOWNS = [  # type: ignore
         "multi": True,
         "name": "juju_unit",
         "query": {
-            "query": 'label_values(up{juju_model="$juju_model",juju_model_uuid="$juju_model_uuid",juju_application="$juju_application"},juju_unit)',
+            "query": 'label_values(up{juju_model=~"$juju_model",juju_model_uuid=~"$juju_model_uuid",juju_application=~"$juju_application"},juju_unit)',
             "refId": "StandardVariableQuery",
         },
         "refresh": 1,
@@ -336,7 +337,7 @@ DATASOURCE_TEMPLATE_DROPDOWNS = [  # type: ignore
         "error": None,
         "hide": 0,
         "includeAll": True,
-        "label": None,
+        "label": "Prometheus datasource",
         "multi": True,
         "name": "prometheusds",
         "options": [],
@@ -351,7 +352,7 @@ DATASOURCE_TEMPLATE_DROPDOWNS = [  # type: ignore
         "error": None,
         "hide": 0,
         "includeAll": True,
-        "label": None,
+        "label": "Loki datasource",
         "multi": True,
         "name": "lokids",
         "options": [],
@@ -1806,7 +1807,6 @@ class GrafanaDashboardAggregator(Object):
 
             # Replace values with LMA-style templating
             dash = self._strip_existing_datasources(dash)
-
             dash = json.dumps(dash)
 
             # Replace the old-style datasource templates
@@ -1988,7 +1988,7 @@ class CosTool:
         args.extend(["--", "{}".format(expression)])
         # noinspection PyBroadException
         try:
-            return self._exec(args)
+            return re.sub(r'="\$juju', r'=~"$juju', self._exec(args))
         except subprocess.CalledProcessError as e:
             logger.debug('Applying the expression failed: "%s", falling back to the original', e)
             return expression
