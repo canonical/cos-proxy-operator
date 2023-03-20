@@ -27,6 +27,9 @@ running on OpenStack.  There is a Telegraf application, cs:telegraf, collecting
 metrics from units, and we wish to relate that to Prometheus and Grafana running
 in another model named cos, running Kubernetes.
 
+If you already have a working COS Lite deployment, you can skip creating another
+one, as well as the steps where you would deploy the COS Lite components one by one.
+
 Here's the steps to create the models:
 
 ```
@@ -47,7 +50,8 @@ Next we'll deploy an example application on the `reactive` model, which should b
 on a single Juju controller which manages both microk8s and a reactive model:
 
 ```
-juju deploy -m cos prometheus-k8s --channel=beta
+juju deploy -m cos prometheus-k8s
+juju deploy -m cos grafana-k8s
 juju deploy -m reactive cs:ubuntu --series focal -n 3
 juju deploy -m reactive cs:telegraf
 juju relate -m reactive telegraf:juju-info ubuntu:juju-info
