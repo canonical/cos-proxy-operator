@@ -1694,7 +1694,7 @@ class GrafanaDashboardAggregator(Object):
         app_ids = _type_convert_stored(self._stored.id_mappings.get(event.app.name, ""))  # type: ignore
 
         if not app_ids:
-            logger.info("Could not look up stored dashboards for %s", event.app.name)
+            logger.info("Could not look up stored dashboards for %s", event.app.name)  # type: ignore
             return
 
         del self._stored.id_mappings[event.app.name]  # type: ignore
