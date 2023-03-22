@@ -115,16 +115,7 @@ DASHBOARD_DUMMY_DATA_2 = {
 
 DUMMY_FIXED_2 = {
     "charm": "dashboard-app-2",
-    "content": '{"templating": {"list": [{"allValue": null, "datasource": '
-    '"${prometheusds}", "definition": '
-    '"label_values(up{juju_model=~\\"$juju_model\\",juju_model_uuid=~\\"$juju_model_uuid\\",juju_application=~\\"$juju_application\\"},host)", '
-    '"description": null, "error": null, "hide": 0, "includeAll": '
-    'true, "label": "hosts", "multi": true, "name": "host", '
-    '"options": [], "query": {"query": '
-    '"label_values(up{juju_model=~\\"$juju_model\\",juju_model_uuid=~\\"$juju_model_uuid\\",juju_application=~\\"$juju_application\\"},host)", '
-    '"refId": "StandardVariableQuery"}, "refresh": 1, "regex": "", '
-    '"skipUrlSync": false, "sort": 1, "tagValuesQuery": "", "tags": '
-    '[], "tagsQuery": "", "type": "query", "useTags": false}]}, '
+    "content": '{"templating": {"list": [{"name": "host"}]}, '
     '"panels": {"data": "different_enough_to_rehash"}}',
     "inject_dropdowns": True,
     "juju_topology": {

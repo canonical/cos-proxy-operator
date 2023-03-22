@@ -48,6 +48,7 @@ from charms.nrpe_exporter.v0.nrpe_exporter import (
     NrpeExporterProvider,
     NrpeTargetsChangedEvent,
 )
+from charms.operator_libs_linux.v0.apt import remove_package
 from charms.operator_libs_linux.v1.systemd import (
     daemon_reload,
     service_restart,
@@ -170,6 +171,9 @@ class COSProxyCharm(CharmBase):
 
     def _on_install(self, _):
         """Initial charm setup."""
+        # Cull out rsyslog so the disk doesn't fill up, and we don't use it for anything, so we
+        # don't need to install/setup logrotate
+        remove_package("rsyslog")
         self.unit.set_workload_version("n/a")
 
     def _on_stop(self, _):
