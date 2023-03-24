@@ -23,22 +23,24 @@ series:
   - focal
   - jammy
 provides:
-  downstream-prometheus-scrape:
-    interface: prometheus_scrape
   downstream-grafana-dashboard:
     interface: grafana_dashboard
+  downstream-prometheus-scrape:
+    interface: prometheus_scrape
   filebeat:
     interface: elastic-beats
 requires:
-  downstream-logging:
-    interface: loki_push_api
-  prometheus-target:
-    interface: http
-  prometheus-rules:
-    interface: prometheus-rules
   dashboards:
     interface: grafana-dashboard
+  downstream-logging:
+    interface: loki_push_api
   general-info:
     interface: general-info
   monitors:
     interface: monitors
+  prometheus:
+    interface: prometheus-manual
+  prometheus-rules:
+    interface: prometheus-rules
+  prometheus-target:
+    interface: http
