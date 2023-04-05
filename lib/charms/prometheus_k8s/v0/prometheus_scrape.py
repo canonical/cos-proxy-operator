@@ -343,7 +343,9 @@ import tempfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
+from urllib.request import urlopen
 
 import yaml
 from charms.observability_libs.v0.juju_topology import JujuTopology
@@ -368,7 +370,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 32
+LIBPATCH = 33
 
 logger = logging.getLogger(__name__)
 
@@ -2185,6 +2187,8 @@ class MetricsEndpointAggregator(Object):
                         "juju_application": application_name,
                         "juju_unit": unit_name,
                         "host": target["hostname"],
+                        # Expanding this will merge the dicts and replace the
+                        # topology labels if any were present/found
                         **self._static_config_extra_labels(target),
                     },
                 }
@@ -2193,7 +2197,6 @@ class MetricsEndpointAggregator(Object):
             "relabel_configs": self._relabel_configs + kwargs.get("relabel_configs", []),
         }
         job.update(kwargs.get("updates", {}))
-
         return job
 
     def _static_config_extra_labels(self, target: Dict[str, str]) -> Dict[str, str]:
@@ -2208,6 +2211,16 @@ class MetricsEndpointAggregator(Object):
                 dns_name = target["hostname"]
             extra_info["dns_name"] = dns_name
 
+        label_re = re.compile(r'(?P<label>[A-Za-z0-9_]+)\s?=\s?"(?P<value>.*?)",?')
+
+        try:
+            with urlopen(f'http://{target["hostname"]}:{target["port"]}/metrics') as resp:
+                data = resp.read().decode("utf-8").splitlines()
+                for metric in data:
+                    for match in label_re.finditer(metric):
+                        extra_info[match.group("label")] = match.group("value")
+        except (HTTPError, URLError, Exception) as e:
+            logger.debug("Could not scrape target: ", e)
         return extra_info
 
     @property
