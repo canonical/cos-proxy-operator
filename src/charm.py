@@ -229,6 +229,7 @@ class COSProxyCharm(CharmBase):
             # so it will survive reboots
             service_resume("nrpe-exporter.service")
 
+        self._start_vector()
         self._set_status()
 
     def _nrpe_relation_broken(self, _):
@@ -237,7 +238,12 @@ class COSProxyCharm(CharmBase):
 
     def _on_filebeat_relation_joined(self, event):
         self._stored.have_filebeat = True
+        self._start_vector()
 
+        event.relation.data[self.unit]["private-address"] = socket.getfqdn()
+        event.relation.data[self.unit]["port"] = "5044"
+
+    def _start_vector(self):
         # Make sure the vector binary is present with a systemd service
         if not Path("/usr/local/bin/vector").exists():
             res = "vector"
@@ -275,15 +281,12 @@ class COSProxyCharm(CharmBase):
             with open("/etc/systemd/system/vector.service", "w") as f:
                 f.write(systemd_template)
 
-            self._write_vector_config(event)
+            self._write_vector_config(None)
             self._modify_enrichment_file()
 
             daemon_reload()
             service_restart("vector.service")
             service_resume("vector.service")
-
-        event.relation.data[self.unit]["private-address"] = socket.getfqdn()
-        event.relation.data[self.unit]["port"] = "5044"
 
     def _modify_enrichment_file(self, endpoints: Optional[List[Dict[str, Any]]] = None):
         path = Path("/etc/vector/nrpe_lookup.csv")
@@ -315,18 +318,19 @@ class COSProxyCharm(CharmBase):
                             ]
                         )
                     )
-                    contents.append(
-                        {
-                            "composite_key": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
-                            + f"{endpoint['additional_fields']['updates']['params']['command'][0]}",
-                            "juju_application": re.sub(r"^(.*?)/\d+$", r"\1", unit),
-                            "juju_unit": unit,
-                            "command": endpoint["additional_fields"]["updates"]["params"][
-                                "command"
-                            ][0],
-                            "ipaddr": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}",
-                        }
-                    )
+                    entry = {
+                        "composite_key": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
+                        + f"{endpoint['additional_fields']['updates']['params']['command'][0]}",
+                        "juju_application": re.sub(r"^(.*?)/\d+$", r"\1", unit),
+                        "juju_unit": unit,
+                        "command": endpoint["additional_fields"]["updates"]["params"]["command"][
+                            0
+                        ],
+                        "ipaddr": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}",
+                    }
+
+                    if entry not in contents:
+                        contents.append(entry)
 
             if contents:
                 with path.open("w", newline="") as f:
@@ -447,9 +451,9 @@ class COSProxyCharm(CharmBase):
         ):
             message = " one of (Grafana|dashboard) relation(s) "
 
-        if (self._stored.have_loki and not self._stored.have_filebeat) or (
-            self._stored.have_filebeat and not self._stored.have_loki
-        ):
+        if (
+            self._stored.have_loki and not (self._stored.have_filebeat or self._stored.have_nrpe)
+        ) or (self._stored.have_filebeat and not self._stored.have_loki):
             message = " one of (Loki|filebeat) relation(s) "
 
         if (

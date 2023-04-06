@@ -121,7 +121,7 @@ More complex scrape configurations are possible. For example
             {
                 "targets": ["10.1.32.215:7000", "*:8000"],
                 "labels": {
-                    "some-key": "some-value"
+                    "some_key": "some-value"
                 }
             }
         ]
@@ -151,7 +151,7 @@ each job must be given a unique name:
             {
                 "targets": ["*:7000"],
                 "labels": {
-                    "some-key": "some-value"
+                    "some_key": "some-value"
                 }
             }
         ]
@@ -163,7 +163,7 @@ each job must be given a unique name:
             {
                 "targets": ["*:8000"],
                 "labels": {
-                    "some-other-key": "some-other-value"
+                    "some_other_key": "some-other-value"
                 }
             }
         ]
@@ -343,7 +343,9 @@ import tempfile
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
+from urllib.request import urlopen
 
 import yaml
 from charms.observability_libs.v0.juju_topology import JujuTopology
@@ -368,7 +370,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 32
+LIBPATCH = 34
 
 logger = logging.getLogger(__name__)
 
@@ -686,10 +688,27 @@ class InvalidAlertRuleEvent(EventBase):
         self.errors = snapshot["errors"]
 
 
+class InvalidScrapeJobEvent(EventBase):
+    """Event emitted when alert rule files are not valid."""
+
+    def __init__(self, handle, errors: str = ""):
+        super().__init__(handle)
+        self.errors = errors
+
+    def snapshot(self) -> Dict:
+        """Save error information."""
+        return {"errors": self.errors}
+
+    def restore(self, snapshot):
+        """Restore error information."""
+        self.errors = snapshot["errors"]
+
+
 class MetricsEndpointProviderEvents(ObjectEvents):
     """Events raised by :class:`InvalidAlertRuleEvent`s."""
 
     alert_rule_status_changed = EventSource(InvalidAlertRuleEvent)
+    invalid_scrape_job = EventSource(InvalidScrapeJobEvent)
 
 
 def _type_convert_stored(obj):
@@ -1119,7 +1138,18 @@ class MetricsEndpointConsumer(Object):
         for relation in self._charm.model.relations[self._relation_name]:
             static_scrape_jobs = self._static_scrape_config(relation)
             if static_scrape_jobs:
-                scrape_jobs.extend(static_scrape_jobs)
+                # Duplicate job names will cause validate_scrape_jobs to fail.
+                # Therefore we need to dedupe here and after all jobs are collected.
+                static_scrape_jobs = _dedupe_job_names(static_scrape_jobs)
+                try:
+                    self._tool.validate_scrape_jobs(static_scrape_jobs)
+                except subprocess.CalledProcessError as e:
+                    if self._charm.unit.is_leader():
+                        data = json.loads(relation.data[self._charm.app].get("event", "{}"))
+                        data["scrape_job_errors"] = str(e)
+                        relation.data[self._charm.app]["event"] = json.dumps(data)
+                else:
+                    scrape_jobs.extend(static_scrape_jobs)
 
         scrape_jobs = _dedupe_job_names(scrape_jobs)
 
@@ -1198,12 +1228,17 @@ class MetricsEndpointConsumer(Object):
                 )
                 continue
 
+            alerts[identifier] = alert_rules
+
             _, errmsg = self._tool.validate_alert_rules(alert_rules)
             if errmsg:
-                relation.data[self._charm.app]["event"] = json.dumps({"errors": errmsg})
+                if alerts[identifier]:
+                    del alerts[identifier]
+                if self._charm.unit.is_leader():
+                    data = json.loads(relation.data[self._charm.app].get("event", "{}"))
+                    data["errors"] = errmsg
+                    relation.data[self._charm.app]["event"] = json.dumps(data)
                 continue
-
-            alerts[identifier] = alert_rules
 
         return alerts
 
@@ -1663,6 +1698,10 @@ class MetricsEndpointProvider(Object):
                     self.on.alert_rule_status_changed.emit(valid=valid)
                 else:
                     self.on.alert_rule_status_changed.emit(valid=valid, errors=errors)
+
+                scrape_errors = ev.get("scrape_job_errors", None)
+                if scrape_errors:
+                    self.on.invalid_scrape_job.emit(errors=scrape_errors)
 
     def update_scrape_job_spec(self, jobs):
         """Update scrape job specification."""
@@ -2185,6 +2224,8 @@ class MetricsEndpointAggregator(Object):
                         "juju_application": application_name,
                         "juju_unit": unit_name,
                         "host": target["hostname"],
+                        # Expanding this will merge the dicts and replace the
+                        # topology labels if any were present/found
                         **self._static_config_extra_labels(target),
                     },
                 }
@@ -2207,7 +2248,16 @@ class MetricsEndpointAggregator(Object):
                 logger.debug("Could not perform DNS lookup for %s", target["hostname"])
                 dns_name = target["hostname"]
             extra_info["dns_name"] = dns_name
+        label_re = re.compile(r'(?P<label>[A-Za-z0-9_]+)\s?=\s?"(?P<value>.*?)",?')
 
+        try:
+            with urlopen(f'http://{target["hostname"]}:{target["port"]}/metrics') as resp:
+                data = resp.read().decode("utf-8").splitlines()
+                for metric in data:
+                    for match in label_re.finditer(metric):
+                        extra_info[match.group("label")] = match.group("value")
+        except (HTTPError, URLError, Exception) as e:
+            logger.debug("Could not scrape target: ", e)
         return extra_info
 
     @property
@@ -2472,6 +2522,22 @@ class CosTool:
                         if "error validating" in line
                     ]
                 )
+
+    def validate_scrape_jobs(self, jobs: list) -> bool:
+        """Validate scrape jobs using cos-tool."""
+        if not self.path:
+            logger.debug("`cos-tool` unavailable. Not validating scrape jobs.")
+            return True
+        conf = {"scrape_configs": jobs}
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            with open(tmpfile.name, "w") as f:
+                f.write(yaml.safe_dump(conf))
+            try:
+                self._exec([str(self.path), "validate-config", tmpfile.name])
+            except subprocess.CalledProcessError as e:
+                logger.error("Validating scrape jobs failed: {}".format(e.output))
+                raise
+        return True
 
     def inject_label_matchers(self, expression, topology) -> str:
         """Add label matchers to an expression."""
