@@ -75,7 +75,10 @@ DASHBOARD_DUMMY_DATA_1 = {
                             {"datasource": "Juju data"},
                         ],
                     },
-                    "panels": {"data": "some_data_to_hash_across"},
+                    "panels": {
+                        "data": "some_data_to_hash_across",
+                        "legendFormat": "{{ host }} | {{ instance_name }}",
+                    },
                 },
             },
         }
@@ -86,7 +89,7 @@ DUMMY_FIXED_1 = {
     "charm": "dashboard-app-1",
     "content": '{"__inputs": [], "templating": {"list": [{"datasource": '
     '"${prometheusds}"}]}, "panels": {"data": '
-    '"some_data_to_hash_across"}}',
+    '"some_data_to_hash_across", "legendFormat": "{{ host }} | {{ instance_name }}"}}',
     "inject_dropdowns": True,
     "juju_topology": {
         "application": "dashboard-app-1",
@@ -106,7 +109,10 @@ DASHBOARD_DUMMY_DATA_2 = {
                             {"name": "host"},
                         ],
                     },
-                    "panels": {"data": "different_enough_to_rehash"},
+                    "panels": {
+                        "legendFormat": "{{ host }} | {{ instance_name }}",
+                        "data": "different_enough_to_rehash",
+                    },
                 },
             },
         }
@@ -116,7 +122,8 @@ DASHBOARD_DUMMY_DATA_2 = {
 DUMMY_FIXED_2 = {
     "charm": "dashboard-app-2",
     "content": '{"templating": {"list": [{"name": "host"}]}, '
-    '"panels": {"data": "different_enough_to_rehash"}}',
+    '"panels": {"legendFormat": "{{ host }} | {{ instance_name }}", '
+    '"data": "different_enough_to_rehash"}}',
     "inject_dropdowns": True,
     "juju_topology": {
         "application": "dashboard-app-2",
@@ -855,5 +862,5 @@ class COSProxyCharmTest(unittest.TestCase):
         )
         dashboards = json.loads(grafana_rel_data.get("dashboards", "{}"))
         self.assertEqual(len(dashboards["templates"]), 2)
-        self.assertEqual(dashboards["templates"]["prog:e_data_t"], DUMMY_FIXED_1)
+        self.assertEqual(dashboards["templates"]["prog:| {{ ins"], DUMMY_FIXED_1)
         self.assertEqual(dashboards["templates"]["prog:rent_eno"], DUMMY_FIXED_2)
