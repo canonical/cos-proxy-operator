@@ -2248,7 +2248,7 @@ class MetricsEndpointAggregator(Object):
                 logger.debug("Could not perform DNS lookup for %s", target["hostname"])
                 dns_name = target["hostname"]
             extra_info["dns_name"] = dns_name
-        label_re = re.compile(r'[,{]\s?(?P<label>juju_[amu].*?)="(?P<value>.*?)",?')
+        label_re = re.compile(r'[{,]\s?(?<!")(?P<label>juju_[amu].*?)="(?P<value>.*?)",?')
 
         try:
             with urlopen(f'http://{target["hostname"]}:{target["port"]}/metrics') as resp:
