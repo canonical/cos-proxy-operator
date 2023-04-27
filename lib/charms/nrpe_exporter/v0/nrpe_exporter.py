@@ -28,7 +28,7 @@ import json
 import logging
 import re
 from json.decoder import JSONDecodeError
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import yaml
 from ops.charm import CharmBase, RelationEvent, RelationRole
@@ -195,6 +195,7 @@ def find_key(d: dict, key: str) -> Any:
         val = find_key(child, key)
         if val:
             return val
+    return None
 
 
 class NrpeTargetsChangedEvent(EventBase):
