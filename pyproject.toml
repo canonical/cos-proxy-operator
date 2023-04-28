@@ -31,9 +31,6 @@ ignore = ["E501", "D107", "W605", "RET504"]
 [tool.ruff.pydocstyle]
 convention = "google"
 
-[tool.ruff.mccabe]
-max-complexity = 10
-
 # Static analysis tools configuration
 [tool.mypy]
 pretty = true
