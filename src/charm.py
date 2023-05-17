@@ -92,22 +92,22 @@ class COSProxyCharm(CharmBase):
         self._dashboard_aggregator = GrafanaDashboardAggregator(self)
 
         self.framework.observe(
-            self.on.dashboards_relation_joined,
+            self.on.dashboards_relation_joined,  # pyright: ignore
             self._dashboards_relation_joined,
         )
 
         self.framework.observe(
-            self.on.dashboards_relation_broken,
+            self.on.dashboards_relation_broken,  # pyright: ignore
             self._dashboards_relation_broken,
         )
 
         self.framework.observe(
-            self.on.downstream_grafana_dashboard_relation_joined,
+            self.on.downstream_grafana_dashboard_relation_joined,  # pyright: ignore
             self._downstream_grafana_dashboard_relation_joined,
         )
 
         self.framework.observe(
-            self.on.downstream_grafana_dashboard_relation_broken,
+            self.on.downstream_grafana_dashboard_relation_broken,  # pyright: ignore
             self._downstream_grafana_dashboard_relation_broken,
         )
 
@@ -115,46 +115,59 @@ class COSProxyCharm(CharmBase):
 
         self.nrpe_exporter = NrpeExporterProvider(self)
         self.framework.observe(
-            self.nrpe_exporter.on.nrpe_targets_changed, self._on_nrpe_targets_changed
+            self.nrpe_exporter.on.nrpe_targets_changed,  # pyright: ignore
+            self._on_nrpe_targets_changed,
         )
 
         self.vector = VectorProvider(self)
-        self.framework.observe(self.on.filebeat_relation_joined, self._on_filebeat_relation_joined)
-        self.framework.observe(self.vector.on.config_changed, self._write_vector_config)
+        self.framework.observe(
+            self.on.filebeat_relation_joined, self._on_filebeat_relation_joined  # pyright: ignore
+        )
+        self.framework.observe(
+            self.vector.on.config_changed, self._write_vector_config  # pyright: ignore
+        )
 
         self.framework.observe(
-            self.on.downstream_logging_relation_joined,
+            self.on.downstream_logging_relation_joined,  # pyright: ignore
             self._downstream_logging_relation_joined,
         )
 
         self.framework.observe(
-            self.on.downstream_logging_relation_broken,
+            self.on.downstream_logging_relation_broken,  # pyright: ignore
             self._downstream_logging_relation_broken,
         )
 
         self.framework.observe(
-            self.on.prometheus_target_relation_joined,
+            self.on.prometheus_target_relation_joined,  # pyright: ignore
             self._prometheus_target_relation_joined,
         )
         self.framework.observe(
-            self.on.prometheus_target_relation_broken,
+            self.on.prometheus_target_relation_broken,  # pyright: ignore
             self._prometheus_target_relation_broken,
         )
 
         self.framework.observe(
-            self.on.downstream_prometheus_scrape_relation_joined,
+            self.on.downstream_prometheus_scrape_relation_joined,  # pyright: ignore
             self._downstream_prometheus_scrape_relation_joined,
         )
         self.framework.observe(
-            self.on.downstream_prometheus_scrape_relation_broken,
+            self.on.downstream_prometheus_scrape_relation_broken,  # pyright: ignore
             self._downstream_prometheus_scrape_relation_broken,
         )
 
-        self.framework.observe(self.on.monitors_relation_joined, self._nrpe_relation_joined)
-        self.framework.observe(self.on.monitors_relation_broken, self._nrpe_relation_broken)
+        self.framework.observe(
+            self.on.monitors_relation_joined, self._nrpe_relation_joined  # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.monitors_relation_broken, self._nrpe_relation_broken  # pyright: ignore
+        )
 
-        self.framework.observe(self.on.general_info_relation_joined, self._nrpe_relation_joined)
-        self.framework.observe(self.on.general_info_relation_broken, self._nrpe_relation_broken)
+        self.framework.observe(
+            self.on.general_info_relation_joined, self._nrpe_relation_joined  # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.general_info_relation_broken, self._nrpe_relation_broken  # pyright: ignore
+        )
 
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.stop, self._on_stop)
@@ -406,7 +419,7 @@ class COSProxyCharm(CharmBase):
 
     def _downstream_prometheus_scrape_relation_joined(self, _):
         self._stored.have_prometheus = True
-        if self._stored.have_nrpe:
+        if self._stored.have_nrpe:  # pyright: ignore
             self._on_nrpe_targets_changed(None)
         self._set_status()
 
@@ -446,22 +459,25 @@ class COSProxyCharm(CharmBase):
 
     def _set_status(self):
         message = ""
-        if (self._stored.have_grafana and not self._stored.have_dashboards) or (
-            self._stored.have_dashboards and not self._stored.have_grafana
+        if (self._stored.have_grafana and not self._stored.have_dashboards) or (  # pyright: ignore
+            self._stored.have_dashboards and not self._stored.have_grafana  # pyright: ignore
         ):
             message = " one of (Grafana|dashboard) relation(s) "
 
         if (
-            self._stored.have_loki and not (self._stored.have_filebeat or self._stored.have_nrpe)
-        ) or (self._stored.have_filebeat and not self._stored.have_loki):
+            self._stored.have_loki  # pyright: ignore
+            and not (self._stored.have_filebeat or self._stored.have_nrpe)  # pyright: ignore
+        ) or (
+            self._stored.have_filebeat and not self._stored.have_loki  # pyright: ignore
+        ):
             message = " one of (Loki|filebeat) relation(s) "
 
         if (
-            self._stored.have_prometheus
-            and not (self._stored.have_targets or self._stored.have_nrpe)
+            self._stored.have_prometheus  # pyright: ignore
+            and not (self._stored.have_targets or self._stored.have_nrpe)  # pyright: ignore
         ) or (
-            (self._stored.have_targets or self._stored.have_nrpe)
-            and not self._stored.have_prometheus
+            (self._stored.have_targets or self._stored.have_nrpe)  # pyright: ignore
+            and not self._stored.have_prometheus  # pyright: ignore
         ):
             message += "{} one of (Prometheus|target|nrpe) relation(s)".format(
                 "and" if message else ""
