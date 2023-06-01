@@ -28,7 +28,7 @@ import json
 import logging
 import re
 from json.decoder import JSONDecodeError
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 from ops.charm import CharmBase, RelationEvent, RelationRole
@@ -50,7 +50,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 
 logger = logging.getLogger(__name__)
@@ -172,13 +172,12 @@ def _type_convert_stored(obj):
     """Convert Stored* to their appropriate types, recursively."""
     if isinstance(obj, StoredList):
         return list(map(_type_convert_stored, obj))
-    elif isinstance(obj, StoredDict):
-        rdict = {}  # type: Dict[Any, Any]
+    if isinstance(obj, StoredDict):
+        rdict: Dict[Any, Any] = {}
         for k in obj.keys():
             rdict[k] = _type_convert_stored(obj[k])
         return rdict
-    else:
-        return obj
+    return obj
 
 
 def find_key(d: dict, key: str) -> Any:
@@ -237,7 +236,7 @@ class NrpeEvents(ObjectEvents):
 class NrpeExporterProvider(Object):
     """A NRPE exporter based monitor."""
 
-    on = NrpeEvents()
+    on = NrpeEvents()  # pyright: ignore
     _stored = StoredState()
 
     def __init__(self, charm: CharmBase, relation_names: Optional[dict] = None):
@@ -295,18 +294,20 @@ class NrpeExporterProvider(Object):
                 alerts.extend(alerts)
 
         removed_endpoints = [
-            e["additional_fields"]["updates"]["job_name"]
-            for e in _type_convert_stored(self._stored.endpoints)
+            e["additional_fields"]["updates"]["job_name"]  # pyright: ignore
+            for e in _type_convert_stored(self._stored.endpoints)  # pyright: ignore
             if e not in nrpe_endpoints
         ]
         self._stored.endpoints = nrpe_endpoints
 
         removed_alerts = [
-            a for a in _type_convert_stored(self._stored.alert_rules) if a not in alerts
+            a
+            for a in _type_convert_stored(self._stored.alert_rules)  # pyright: ignore
+            if a not in alerts
         ]
-        self._stored.alert_rules = alerts
+        self._stored.alert_rules = alerts  # pyright: ignore
 
-        self.on.nrpe_targets_changed.emit(
+        self.on.nrpe_targets_changed.emit(  # pyright: ignore
             relation_id=rel_id, removed_targets=removed_endpoints, removed_alerts=removed_alerts
         )
 
@@ -317,7 +318,7 @@ class NrpeExporterProvider(Object):
             A list consisting of all the endpoints and partial configurations
             to be ingested by Prometheus.
         """
-        return _type_convert_stored(self._stored.endpoints)
+        return _type_convert_stored(self._stored.endpoints)  # pyright: ignore
 
     def alerts(self) -> list:
         """Fetch the list of automatically generated alert rules.
@@ -325,7 +326,7 @@ class NrpeExporterProvider(Object):
         Returns:
             A list of alert rules, in dict format.
         """
-        return _type_convert_stored(self._stored.alert_rules)
+        return _type_convert_stored(self._stored.alert_rules)  # pyright: ignore
 
     def _generate_data(self, relation) -> Tuple[list, list]:
         """Find NRPE jobs for a single relation, if they exist, and format the data.
@@ -385,7 +386,11 @@ class NrpeExporterProvider(Object):
         nrpe_endpoints = []
         alerts = []
 
-        exporter_address = self._charm.model.get_binding(relation).network.bind_address
+        binding_relation = self._charm.model.get_binding(relation)
+
+        exporter_address = None
+        if binding_relation:
+            exporter_address = binding_relation.network.bind_address
 
         for unit in relation.units:
             monitors = relation.data[unit].get("monitors", "")
