@@ -18,10 +18,13 @@ target-version = ["py38"]
 line-length = 99
 extend-exclude = ["__pycache__", "*.egg_info"]
 select = ["E", "W", "F", "C", "N", "R", "D", "I001"]
-# Ignore E501 because using black creates errors with this
-# Ignore D107 Missing docstring in __init__
-# Ignore W605 as it doesn't recognize raw strings
-ignore = ["E501", "D107", "W605", "RET504", "C901"]
+ignore = [
+  "E501", # Using black creates errors with this
+  "D107", # Missing docstring in __init__
+  "W605", # Pyright not recognizing raw strings
+  "RET504",
+  "C901"
+]
 
 [tool.ruff.per-file-ignores]
 # D100, D101, D102, D103: Ignore missing docstrings in tests
