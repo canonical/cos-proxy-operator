@@ -149,7 +149,7 @@ def _validate_relation_by_interface_and_direction(
     relation = charm.meta.relations[relation_name]
 
     actual_relation_interface = relation.interface_name
-    if actual_relation_interface != expected_relation_interface:
+    if actual_relation_interface and actual_relation_interface != expected_relation_interface:
         raise RelationInterfaceMismatchError(
             relation_name, expected_relation_interface, actual_relation_interface
         )
