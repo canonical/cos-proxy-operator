@@ -30,7 +30,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 2
 
 
 logger = logging.getLogger(__name__)
@@ -76,9 +76,11 @@ sources:
         excludes: [binfmt_misc]
       mountPoints:
         excludes: ["*/proc/sys/fs/binfmt_misc"]
+    scrape_interval_secs: 60
     type: host_metrics
   internal_metrics:
     type: internal_metrics
+    scrape_interval_secs: 60
   logstash:
     address: "0.0.0.0:5044"
     type: logstash
