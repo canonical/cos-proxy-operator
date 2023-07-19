@@ -336,7 +336,7 @@ class NrpeExporterProvider(Object):
                 configuration is checked.
 
         Returns:
-            A tuple consisting of a list (possibly empty) of NRPE endoints as a dict
+            A tuple consisting of a list (possibly empty) of NRPE endpoints as a dict
                 containing parameterized data which can be ingested by Prometheus. If
                 endpoints are generated, the second item in the tuple will be a list of
                 dynamically created alert rules for those targets
