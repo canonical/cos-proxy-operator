@@ -285,13 +285,13 @@ class NrpeExporterProvider(Object):
         rel_id = event.relation.id
 
         nrpe_endpoints = []
-        alerts = []  # type: List[Dict]
+        nrpe_alerts = []  # type: List[Dict]
 
         for relation_name in self._relation_names.keys():
             for relation in self._charm.model.relations[relation_name]:
                 endpoints, alerts = self._generate_data(relation)
                 nrpe_endpoints.extend(endpoints)
-                alerts.extend(alerts)
+                nrpe_alerts.extend(alerts)
 
         removed_endpoints = [
             e["additional_fields"]["updates"]["job_name"]  # pyright: ignore
@@ -303,9 +303,9 @@ class NrpeExporterProvider(Object):
         removed_alerts = [
             a
             for a in _type_convert_stored(self._stored.alert_rules)  # pyright: ignore
-            if a not in alerts
+            if a not in nrpe_alerts
         ]
-        self._stored.alert_rules = alerts  # pyright: ignore
+        self._stored.alert_rules = nrpe_alerts  # pyright: ignore
 
         self.on.nrpe_targets_changed.emit(  # pyright: ignore
             relation_id=rel_id, removed_targets=removed_endpoints, removed_alerts=removed_alerts
