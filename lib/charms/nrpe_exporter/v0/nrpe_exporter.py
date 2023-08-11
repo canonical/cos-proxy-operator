@@ -460,10 +460,10 @@ class NrpeExporterProvider(Object):
                 "Unit = {{ $labels.juju_unit }}\n"
                 "Value = {{ $value }}\n"
                 "Legend:\n"
-                "\tStatusOK        = 0\n"
-                "\tStatusWarning   = 1\n"
-                "\tStatusCritical  = 2\n"
-                "\tStatusUnknown   = 3",
+                "  - StatusOK       = 0\n"
+                "  - StatusWarning  = 1\n"
+                "  - StatusCritical = 2\n"
+                "  - StatusUnknown  = 3",
             },
         }
 
