@@ -414,22 +414,25 @@ class NrpeExporterProvider(Object):
                 logger.warning("Monitor data is not a dict after parsing. Skipping.")
                 continue
             jobs = find_key(monitor_data, "nrpe")
-            for val in jobs.values():
-                if isinstance(val, str):
-                    cmd = val
-                else:
-                    cmd = next(iter(val.values()))
-                # The ID could be `target-id` or `target_id`
-                id = relation.data[unit].get("target-id", "") or relation.data[unit].get(
-                    "target_id", ""
-                )
-                id = re.sub(r"^juju[-_]", "", id)
+            if jobs:
+                for val in jobs.values():
+                    if isinstance(val, str):
+                        cmd = val
+                    else:
+                        cmd = next(iter(val.values()))
+                    # The ID could be `target-id` or `target_id`
+                    id = relation.data[unit].get("target-id", "") or relation.data[unit].get(
+                        "target_id", ""
+                    )
+                    id = re.sub(r"^juju[-_]", "", id)
 
-                alerts.append(self._generate_alert(relation, cmd, id, unit))
+                    alerts.append(self._generate_alert(relation, cmd, id, unit))
 
-                nrpe_endpoints.append(
-                    self._generate_prometheus_job(relation, unit, cmd, exporter_address, id)
-                )
+                    nrpe_endpoints.append(
+                        self._generate_prometheus_job(relation, unit, cmd, exporter_address, id)
+                    )
+            else:
+                logger.debug("No NRPE check is defined.")
 
         return nrpe_endpoints, alerts
 
