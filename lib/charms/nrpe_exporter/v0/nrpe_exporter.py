@@ -50,7 +50,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 2
+LIBPATCH = 3
 
 
 logger = logging.getLogger(__name__)
@@ -204,11 +204,13 @@ class NrpeTargetsChangedEvent(EventBase):
         self,
         handle,
         relation_id,
+        current_targets: List[Dict[str, Any]],
         removed_targets: List[str],
         removed_alerts: List[str],
     ):
         super().__init__(handle)
         self.relation_id = relation_id
+        self.current_targets = current_targets
         self.removed_targets = removed_targets or []
         self.removed_alerts = removed_alerts or []
 
@@ -216,6 +218,7 @@ class NrpeTargetsChangedEvent(EventBase):
         """Save target relation information."""
         return {
             "relation_id": self.relation_id,
+            "current_targets": self.current_targets,
             "removed_targets": self.removed_targets,
             "removed_alerts": self.removed_alerts,
         }
@@ -223,6 +226,7 @@ class NrpeTargetsChangedEvent(EventBase):
     def restore(self, snapshot):
         """Restore target relation information."""
         self.relation_id = snapshot["relation_id"]
+        self.current_targets = _type_convert_stored(snapshot["current_targets"])
         self.removed_targets = _type_convert_stored(snapshot["removed_targets"])
         self.removed_alerts = _type_convert_stored(snapshot["removed_alerts"])
 
@@ -298,18 +302,24 @@ class NrpeExporterProvider(Object):
             for e in _type_convert_stored(self._stored.endpoints)  # pyright: ignore
             if e not in nrpe_endpoints
         ]
-        self._stored.endpoints = nrpe_endpoints
 
         removed_alerts = [
             a
             for a in _type_convert_stored(self._stored.alert_rules)  # pyright: ignore
             if a not in nrpe_alerts
         ]
-        self._stored.alert_rules = nrpe_alerts  # pyright: ignore
 
         self.on.nrpe_targets_changed.emit(  # pyright: ignore
-            relation_id=rel_id, removed_targets=removed_endpoints, removed_alerts=removed_alerts
+            relation_id=rel_id,
+            current_targets=nrpe_endpoints,
+            removed_targets=removed_endpoints,
+            removed_alerts=removed_alerts,
         )
+
+        # Important: update stored state only after relation data is updated successfully.
+        # https://github.com/canonical/cos-proxy-operator/issues/88#issuecomment-1798063141
+        self._stored.endpoints = nrpe_endpoints
+        self._stored.alert_rules = nrpe_alerts  # pyright: ignore
 
     def endpoints(self) -> list:
         """Fetch the list of NRPE exporter targets.
