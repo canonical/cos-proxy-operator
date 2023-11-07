@@ -301,9 +301,14 @@ class COSProxyCharm(CharmBase):
             service_restart("vector.service")
             service_resume("vector.service")
 
-    def _modify_enrichment_file(self, endpoints: Optional[List[Dict[str, Any]]] = None):
+    @property
+    def path(self):
         path = Path("/etc/vector/nrpe_lookup.csv")
+        return path
+
+    def _modify_enrichment_file(self, endpoints: Optional[List[Dict[str, Any]]] = None):
         fieldnames = ["composite_key", "juju_application", "juju_unit", "command", "ipaddr"]
+        path = self.path
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("w", newline="") as f:
