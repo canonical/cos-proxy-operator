@@ -40,7 +40,7 @@ import stat
 import textwrap
 from csv import DictReader, DictWriter
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 from urllib import request
 
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
@@ -301,9 +301,15 @@ class COSProxyCharm(CharmBase):
             service_restart("vector.service")
             service_resume("vector.service")
 
-    def _modify_enrichment_file(self, endpoints: Optional[List[Dict[str, Any]]] = None):
+    @property
+    def path(self):
+        """Path to the nrpe targets file."""
         path = Path("/etc/vector/nrpe_lookup.csv")
+        return path
+
+    def _modify_enrichment_file(self, endpoints: Optional[List[Dict[str, Any]]] = None):
         fieldnames = ["composite_key", "juju_application", "juju_unit", "command", "ipaddr"]
+        path = self.path
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("w", newline="") as f:
@@ -441,7 +447,7 @@ class COSProxyCharm(CharmBase):
                     a["labels"]["juju_unit"],  # type: ignore
                 )
 
-        nrpes = self.nrpe_exporter.endpoints()
+        nrpes = cast(List[Dict[str, Any]], event.current_targets)
         self._modify_enrichment_file(endpoints=nrpes)
 
         for nrpe in nrpes:
