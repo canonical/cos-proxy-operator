@@ -447,7 +447,11 @@ class COSProxyCharm(CharmBase):
                     a["labels"]["juju_unit"],  # type: ignore
                 )
 
-        nrpes = cast(List[Dict[str, Any]], event.current_targets)
+            nrpes = cast(List[Dict[str, Any]], event.current_targets)
+        else:
+            # If the event arg is None, then the stored state value is already up to date.
+            nrpes = self.nrpe_exporter.endpoints()
+
         self._modify_enrichment_file(endpoints=nrpes)
 
         for nrpe in nrpes:
