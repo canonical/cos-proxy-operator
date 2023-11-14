@@ -1,5 +1,3 @@
-import base64
-import lzma
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,10 +7,6 @@ from charm import COSProxyCharm
 from ops.testing import Harness
 
 
-@patch.object(lzma, "compress", new=lambda x, *args, **kwargs: x)
-@patch.object(lzma, "decompress", new=lambda x, *args, **kwargs: x)
-@patch.object(base64, "b64encode", new=lambda x: x)
-@patch.object(base64, "b64decode", new=lambda x: x)
 class TestRelationMonitors(unittest.TestCase):
     def setUp(self):
         self.mock_enrichment_file = Path(tempfile.mktemp())
