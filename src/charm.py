@@ -329,7 +329,7 @@ class COSProxyCharm(CharmBase):
 
             unit_name = next(
                 filter(
-                    lambda d: "target_label" in d and d["target_label"] == "juju_unit",
+                    lambda d: "target_label" in d and d["target_label"] == "juju_unit",  # type: ignore
                     endpoint["additional_fields"]["relabel_configs"],
                 )
             )["replacement"]
