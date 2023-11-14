@@ -202,7 +202,11 @@ class COSProxyCharm(CharmBase):
 
     def _nrpe_relation_joined(self, _):
         self._stored.have_nrpe = True
+        self._setup_nrpe_exporter()
+        self._start_vector()
+        self._set_status()
 
+    def _setup_nrpe_exporter(self):
         # Make sure the exporter binary is present with a systemd service
         if not Path("/usr/local/bin/nrpe-exporter").exists():
             arch = platform.machine()
@@ -241,9 +245,6 @@ class COSProxyCharm(CharmBase):
             # `enable --now`, but it's the only method which ACTUALLY enables it
             # so it will survive reboots
             service_resume("nrpe-exporter.service")
-
-        self._start_vector()
-        self._set_status()
 
     def _nrpe_relation_broken(self, _):
         self._stored.have_nrpe = False
@@ -316,48 +317,47 @@ class COSProxyCharm(CharmBase):
                 writer = DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
 
-        if endpoints:
-            contents = []
-            current = [
-                f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
-                + f"{endpoint['additional_fields']['updates']['params']['command'][0]}"
-                for endpoint in endpoints
-            ]
-            with path.open(newline="") as f:
-                reader = DictReader(f)
-                contents = [r for r in reader if r["composite_key"] in current]
+        if not endpoints:
+            return
 
-                for endpoint in endpoints:
-                    unit = next(
-                        iter(
-                            [
-                                c["replacement"]
-                                for c in endpoint["additional_fields"]["relabel_configs"]
-                                if c["target_label"] == "juju_unit"
-                            ]
-                        )
+        current = [
+            f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
+            + f"{endpoint['additional_fields']['updates']['params']['command'][0]}"
+            for endpoint in endpoints
+        ]
+        with path.open(newline="") as f:
+            reader = DictReader(f)
+            contents = [r for r in reader if r["composite_key"] in current]
+
+            for endpoint in endpoints:
+                unit = next(
+                    iter(
+                        [
+                            c["replacement"]
+                            for c in endpoint["additional_fields"]["relabel_configs"]
+                            if c["target_label"] == "juju_unit"
+                        ]
                     )
-                    entry = {
-                        "composite_key": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
-                        + f"{endpoint['additional_fields']['updates']['params']['command'][0]}",
-                        "juju_application": re.sub(r"^(.*?)/\d+$", r"\1", unit),
-                        "juju_unit": unit,
-                        "command": endpoint["additional_fields"]["updates"]["params"]["command"][
-                            0
-                        ],
-                        "ipaddr": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}",
-                    }
+                )
+                entry = {
+                    "composite_key": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
+                    + f"{endpoint['additional_fields']['updates']['params']['command'][0]}",
+                    "juju_application": re.sub(r"^(.*?)/\d+$", r"\1", unit),
+                    "juju_unit": unit,
+                    "command": endpoint["additional_fields"]["updates"]["params"]["command"][0],
+                    "ipaddr": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}",
+                }
 
-                    if entry not in contents:
-                        contents.append(entry)
+                if entry not in contents:
+                    contents.append(entry)
 
-            if contents:
-                with path.open("w", newline="") as f:
-                    writer = DictWriter(f, fieldnames=fieldnames)
-                    writer.writeheader()
+        if contents:
+            with path.open("w", newline="") as f:
+                writer = DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
 
-                    for c in contents:
-                        writer.writerow(c)
+                for c in contents:
+                    writer.writerow(c)
 
     def _write_vector_config(self, _):
         if not Path("/var/lib/vector").exists():
