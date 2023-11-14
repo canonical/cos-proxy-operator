@@ -2,7 +2,6 @@ import base64
 import lzma
 import tempfile
 import unittest
-import uuid
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,7 +11,6 @@ from ops.testing import Harness
 
 @patch.object(lzma, "compress", new=lambda x, *args, **kwargs: x)
 @patch.object(lzma, "decompress", new=lambda x, *args, **kwargs: x)
-@patch.object(uuid, "uuid4", new=lambda: "21838076-1191-4a88-8008-234433115007")
 @patch.object(base64, "b64encode", new=lambda x: x)
 @patch.object(base64, "b64decode", new=lambda x: x)
 class TestRelationMonitors(unittest.TestCase):
@@ -30,6 +28,7 @@ class TestRelationMonitors(unittest.TestCase):
 
         self.harness = Harness(COSProxyCharm)
         self.addCleanup(self.harness.cleanup)
+        self.harness.set_model_info(name="mymodel", uuid="fe2c9bbb-58ab-40e4-8f70-f27480093fca")
         self.harness.set_leader(True)
         self.harness.begin_with_initial_hooks()
 

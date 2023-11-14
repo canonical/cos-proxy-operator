@@ -320,14 +320,27 @@ class COSProxyCharm(CharmBase):
         if not endpoints:
             return
 
-        current = [
-            f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
-            + f"{endpoint['additional_fields']['updates']['params']['command'][0]}"
-            for endpoint in endpoints
-        ]
+        current = []
+        for endpoint in endpoints:
+            target = (
+                f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
+                + f"{endpoint['additional_fields']['updates']['params']['command'][0]}"
+            )
+
+            unit_name = next(
+                filter(
+                    lambda d: "target_label" in d and d["target_label"] == "juju_unit",
+                    endpoint["additional_fields"]["relabel_configs"],
+                )
+            )["replacement"]
+
+            # Out of all the fieldnames in the csv file, "composite_key" and "juju_unit" are sufficient to uniquely
+            # identify targets. This is needed for calculating an up-to-date list of targets on relation changes.
+            current.append((target, unit_name))
+
         with path.open(newline="") as f:
             reader = DictReader(f)
-            contents = [r for r in reader if r["composite_key"] in current]
+            contents = [r for r in reader if (r["composite_key"], r["juju_unit"]) in current]
 
             for endpoint in endpoints:
                 unit = next(
