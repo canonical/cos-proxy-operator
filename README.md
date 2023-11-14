@@ -1,5 +1,10 @@
 # COS Proxy charm
 
+[![Charmhub Badge](https://charmhub.io/cos-proxy/badge.svg)](https://charmhub.io/cos-proxy)
+[![Release](https://github.com/canonical/cos-proxy-operator/actions/workflows/release.yaml/badge.svg)](https://github.com/canonical/cos-proxy-operator/actions/workflows/release.yaml)
+[![Discourse Status](https://img.shields.io/discourse/status?server=https%3A%2F%2Fdiscourse.charmhub.io&style=flat&label=CharmHub%20Discourse)](https://discourse.charmhub.io)
+
+
 This Juju machine charm that provides a single integration point in the machine world
 with the Kubernetes-based [COS bundle](https://charmhub.io/cos-lite).
 
