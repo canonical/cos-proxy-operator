@@ -11,6 +11,20 @@ class TestRelationMonitors(unittest.TestCase):
     def setUp(self):
         self.mock_enrichment_file = Path(tempfile.mktemp())
 
+        # The unit data below were obtained from the output of:
+        # juju show-unit \
+        #   cos-proxy/0 --format json | jq '."cos-proxy/0"."relation-info"[0]."related-units"."nrpe/0".data'
+        self.default_unit_data = {
+            "egress-subnets": "10.41.168.226/32",
+            "ingress-address": "10.41.168.226",
+            "machine_id": "1",
+            "model_id": "fe2c9bbb-58ab-40e4-8f70-f27480093fca",
+            "monitors": "{'monitors': {'remote': {'nrpe': {'check_conntrack': 'check_conntrack', 'check_systemd_scopes': 'check_systemd_scopes', 'check_reboot': 'check_reboot'}}}, 'version': '0.3'}",
+            "private-address": "10.41.168.226",
+            "target-address": "10.41.168.226",
+            "target-id": "ubuntu-0",
+        }
+
         for p in [
             patch("charm.remove_package"),
             patch.object(COSProxyCharm, "_setup_nrpe_exporter"),
@@ -22,33 +36,23 @@ class TestRelationMonitors(unittest.TestCase):
 
         self.harness = Harness(COSProxyCharm)
         self.addCleanup(self.harness.cleanup)
+        self.harness.add_network("10.41.168.226")
         self.harness.set_model_info(name="mymodel", uuid="fe2c9bbb-58ab-40e4-8f70-f27480093fca")
         self.harness.set_leader(True)
-        self.harness.begin_with_initial_hooks()
 
     def tearDown(self):
         self.mock_enrichment_file.unlink(missing_ok=True)
 
     def test_monitors_changed(self):
-        # The unit data below were obtained from the output of:
-        # juju show-unit \
-        #   cos-proxy/0 --format json | jq '."cos-proxy/0"."relation-info"[0]."related-units"."nrpe/0".data'
-        self.harness.add_network("10.41.168.226")
+        # GIVEN a post-startup charm
+        self.harness.begin_with_initial_hooks()
 
-        unit_data = {
-            "egress-subnets": "10.41.168.226/32",
-            "ingress-address": "10.41.168.226",
-            "machine_id": "1",
-            "model_id": "fe2c9bbb-58ab-40e4-8f70-f27480093fca",
-            "monitors": "{'monitors': {'remote': {'nrpe': {'check_conntrack': 'check_conntrack', 'check_systemd_scopes': 'check_systemd_scopes', 'check_reboot': 'check_reboot'}}}, 'version': '0.3'}",
-            "private-address": "10.41.168.226",
-            "target-address": "10.41.168.226",
-            "target-id": "ubuntu-0",
-        }
+        # WHEN a "monitors" relation joins
         rel_id = self.harness.add_relation("monitors", "nrpe")
         self.harness.add_relation_unit(rel_id, "nrpe/0")
-        self.harness.update_relation_data(rel_id, "nrpe/0", unit_data)
+        self.harness.update_relation_data(rel_id, "nrpe/0", self.default_unit_data)
 
+        # THEN the csv file contains corresponding targets
         expected = "\n".join(
             [
                 "composite_key,juju_application,juju_unit,command,ipaddr",
@@ -60,11 +64,13 @@ class TestRelationMonitors(unittest.TestCase):
         )
         self.assertEqual(expected, self.mock_enrichment_file.read_text())
 
+        # AND WHEN the relation data updates with a different prefix
         # The following simulates `juju config nrpe nagios_host_context="context-1"`
         self.harness.update_relation_data(
-            rel_id, "nrpe/0", {**unit_data, **{"target-id": "context-1-ubuntu-0"}}
+            rel_id, "nrpe/0", {**self.default_unit_data, **{"target-id": "context-1-ubuntu-0"}}
         )
 
+        # THEN the csv file is replaced with targets with the modified prefix
         expected = "\n".join(
             [
                 "composite_key,juju_application,juju_unit,command,ipaddr",
