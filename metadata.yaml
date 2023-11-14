@@ -3,25 +3,17 @@
 name: cos-proxy
 
 description: |
-  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based Canonical Observability Stack
+  This Juju machine charm that provides a single integration point in the machine world with Kubernetes-based Canonical
+  Observability Stack
 
 summary: |
   Single integration point in the machine world with Kubernetes-based COS
 docs: https://discourse.charmhub.io/t/cos-proxy-operator-docs-index/5611
 
-tags:
-  - observability
-  - lma
-  - cos
-  - monitoring
-  - logging
-  - alerting
-  - grafana
-  - nrpe
-
 series:
   - focal
   - jammy
+
 provides:
   downstream-grafana-dashboard:
     interface: grafana_dashboard
@@ -29,6 +21,7 @@ provides:
     interface: prometheus_scrape
   filebeat:
     interface: elastic-beats
+
 requires:
   dashboards:
     interface: grafana-dashboard
