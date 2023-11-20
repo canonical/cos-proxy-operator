@@ -50,7 +50,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 3
+LIBPATCH = 4
 
 
 logger = logging.getLogger(__name__)
@@ -205,12 +205,14 @@ class NrpeTargetsChangedEvent(EventBase):
         handle,
         relation_id,
         current_targets: List[Dict[str, Any]],
+        current_alerts: List[Dict[str, Any]],
         removed_targets: List[str],
         removed_alerts: List[str],
     ):
         super().__init__(handle)
         self.relation_id = relation_id
         self.current_targets = current_targets
+        self.current_alerts = current_alerts
         self.removed_targets = removed_targets or []
         self.removed_alerts = removed_alerts or []
 
@@ -219,6 +221,7 @@ class NrpeTargetsChangedEvent(EventBase):
         return {
             "relation_id": self.relation_id,
             "current_targets": self.current_targets,
+            "current_alerts": self.current_alerts,
             "removed_targets": self.removed_targets,
             "removed_alerts": self.removed_alerts,
         }
@@ -227,6 +230,7 @@ class NrpeTargetsChangedEvent(EventBase):
         """Restore target relation information."""
         self.relation_id = snapshot["relation_id"]
         self.current_targets = _type_convert_stored(snapshot["current_targets"])
+        self.current_alerts = _type_convert_stored(snapshot["current_alerts"])
         self.removed_targets = _type_convert_stored(snapshot["removed_targets"])
         self.removed_alerts = _type_convert_stored(snapshot["removed_alerts"])
 
@@ -312,6 +316,7 @@ class NrpeExporterProvider(Object):
         self.on.nrpe_targets_changed.emit(  # pyright: ignore
             relation_id=rel_id,
             current_targets=nrpe_endpoints,
+            current_alerts=nrpe_alerts,
             removed_targets=removed_endpoints,
             removed_alerts=removed_alerts,
         )
@@ -450,7 +455,7 @@ class NrpeExporterProvider(Object):
         """Generate an on-the-fly Alert rule."""
         return {
             "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),
-            # Average over 5 minutes considering a 60 second scrape interval
+            # Average over 5 minutes considering a 60-second scrape interval
             "expr": "avg_over_time(command_status{{juju_unit='{}',command='{}'}}[15m]) > 1".format(
                 re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")), cmd
             )

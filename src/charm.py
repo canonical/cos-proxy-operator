@@ -462,7 +462,7 @@ class COSProxyCharm(CharmBase):
 
             nrpes = cast(List[Dict[str, Any]], event.current_targets)
         else:
-            # If the event arg is None, then the stored state value is already up to date.
+            # If the event arg is None, then the stored state value is already up-to-date.
             nrpes = self.nrpe_exporter.endpoints()
 
         self._modify_enrichment_file(endpoints=nrpes)
@@ -472,8 +472,7 @@ class COSProxyCharm(CharmBase):
                 nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
             )
 
-        alerts = self.nrpe_exporter.alerts()
-        for alert in alerts:
+        for alert in event.current_alerts:
             self.metrics_aggregator.set_alert_rule_data(
                 re.sub(r"/", "_", alert["labels"]["juju_unit"]),
                 alert,
