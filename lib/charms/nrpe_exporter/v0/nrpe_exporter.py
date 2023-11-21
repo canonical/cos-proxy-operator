@@ -464,7 +464,7 @@ class NrpeExporterProvider(Object):
             ),
             "for": "0m",
             "labels": {
-                "severity": "{{ if eq $value 0.0 -}} ok {{- else if eq $value 1.0 -}} warning {{- else if eq $value 2.0 -}} critical {{- else if eq $value 3.0 -}} error {{- end }}",
+                "severity": "{{ if eq $value 0.0 -}} info {{- else if eq $value 1.0 -}} warning {{- else if eq $value 2.0 -}} critical {{- else if eq $value 3.0 -}} error {{- end }}",
                 "juju_model": self.model.name,
                 "juju_application": re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-")),
                 "juju_unit": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
