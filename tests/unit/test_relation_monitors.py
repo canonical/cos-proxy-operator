@@ -81,3 +81,19 @@ class TestRelationMonitors(unittest.TestCase):
             ]
         )
         self.assertEqual(expected, self.mock_enrichment_file.read_text())
+
+    def test_prometheus(self):
+        # GIVEN a post-startup charm
+        self.harness.begin_with_initial_hooks()
+
+        # WHEN "monitors" and "downstream-prometheus-scrape" relations join
+        rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
+        self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
+        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_unit_data)
+
+        rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
+        self.harness.add_relation_unit(rel_id_prom, "prom/0")
+
+        # Alert rules are transferred to prometheus over relation data
+        app_data = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
+        self.assertIn("alert_rules", app_data)
