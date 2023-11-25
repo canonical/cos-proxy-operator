@@ -94,6 +94,6 @@ class TestRelationMonitors(unittest.TestCase):
         rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
         self.harness.add_relation_unit(rel_id_prom, "prom/0")
 
-        # Alert rules are transferred to prometheus over relation data
+        # THEN alert rules are transferred to prometheus over relation data
         app_data = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
         self.assertIn("alert_rules", app_data)
