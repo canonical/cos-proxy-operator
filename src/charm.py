@@ -446,7 +446,7 @@ class COSProxyCharm(CharmBase):
         self._stored.have_prometheus = False
         self._set_status()
 
-    def _on_nrpe_targets_changed(self, event):
+    def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
         """Send NRPE jobs over to MetricsEndpointAggregator."""
         if event and isinstance(event, NrpeTargetsChangedEvent):
             removed_targets = event.removed_targets
@@ -461,9 +461,11 @@ class COSProxyCharm(CharmBase):
                 )
 
             nrpes = cast(List[Dict[str, Any]], event.current_targets)
+            current_alerts = event.current_alerts
         else:
             # If the event arg is None, then the stored state value is already up-to-date.
             nrpes = self.nrpe_exporter.endpoints()
+            current_alerts = self.nrpe_exporter.alerts()
 
         self._modify_enrichment_file(endpoints=nrpes)
 
@@ -472,7 +474,7 @@ class COSProxyCharm(CharmBase):
                 nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
             )
 
-        for alert in event.current_alerts:
+        for alert in current_alerts:
             self.metrics_aggregator.set_alert_rule_data(
                 re.sub(r"/", "_", alert["labels"]["juju_unit"]),
                 alert,
