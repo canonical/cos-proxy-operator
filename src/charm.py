@@ -201,9 +201,9 @@ class COSProxyCharm(CharmBase):
                 Path(f).unlink()
 
     def _nrpe_relation_joined(self, _):
-        self._stored.have_nrpe = True
         self._setup_nrpe_exporter()
         self._start_vector()
+        self._stored.have_nrpe = True
         self._set_status()
 
     def _setup_nrpe_exporter(self):
@@ -437,9 +437,9 @@ class COSProxyCharm(CharmBase):
         self._set_status()
 
     def _downstream_prometheus_scrape_relation_joined(self, _):
-        self._stored.have_prometheus = True
         if self._stored.have_nrpe:  # pyright: ignore
             self._on_nrpe_targets_changed(None)
+        self._stored.have_prometheus = True
         self._set_status()
 
     def _downstream_prometheus_scrape_relation_broken(self, _):
@@ -482,11 +482,11 @@ class COSProxyCharm(CharmBase):
             )
 
     def _set_status(self):
-        message = ""
+        messages = []
         if (self._stored.have_grafana and not self._stored.have_dashboards) or (  # pyright: ignore
             self._stored.have_dashboards and not self._stored.have_grafana  # pyright: ignore
         ):
-            message = " one of (Grafana|dashboard) relation(s) "
+            messages.append("one of (Grafana|dashboard)")
 
         if (
             self._stored.have_loki  # pyright: ignore
@@ -494,7 +494,7 @@ class COSProxyCharm(CharmBase):
         ) or (
             self._stored.have_filebeat and not self._stored.have_loki  # pyright: ignore
         ):
-            message = " one of (Loki|filebeat) relation(s) "
+            messages.append("one of (Loki|filebeat)")
 
         if (
             self._stored.have_prometheus  # pyright: ignore
@@ -503,14 +503,10 @@ class COSProxyCharm(CharmBase):
             (self._stored.have_targets or self._stored.have_nrpe)  # pyright: ignore
             and not self._stored.have_prometheus  # pyright: ignore
         ):
-            message += "{} one of (Prometheus|target|nrpe) relation(s)".format(
-                "and" if message else ""
-            )
+            messages.append("one of (Prometheus|target|nrpe)")
 
-        message = "Missing {}".format(message.strip()) if message else ""
-
-        if message:
-            self.unit.status = BlockedStatus(message)
+        if messages:
+            self.unit.status = BlockedStatus(f"Missing {', '.join(messages)} relation(s)")
         else:
             self.unit.status = ActiveStatus()
 
