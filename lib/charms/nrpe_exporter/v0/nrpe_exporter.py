@@ -464,7 +464,7 @@ class NrpeExporterProvider(Object):
             ),
             "for": "0m",
             "labels": {
-                "severity": "critical",
+                "severity": "{{ if eq $value 0.0 -}} info {{- else if eq $value 1.0 -}} warning {{- else if eq $value 2.0 -}} critical {{- else if eq $value 3.0 -}} error {{- end }}",
                 "juju_model": self.model.name,
                 "juju_application": re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-")),
                 "juju_unit": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
@@ -472,7 +472,7 @@ class NrpeExporterProvider(Object):
                 "nrpe_unit": unit.name,
             },
             "annotations": {
-                "summary": "Unit {{ $labels.juju_unit }}: {{ $labels.command }} critical.",
+                "summary": "Unit {{ $labels.juju_unit }}: {{ $labels.command }} {{ $labels.severity }}.",
                 "description": "Check provided by nrpe_exporter in model {{ $labels.juju_model }} is failing.\n"
                 "Failing check = {{ $labels.command }}\n"
                 "Unit = {{ $labels.juju_unit }}\n"
