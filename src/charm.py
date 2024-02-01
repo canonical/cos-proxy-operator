@@ -390,8 +390,8 @@ class COSProxyCharm(CharmBase):
                     loki_endpoints.append(json.loads(endpoint)["url"])
 
         if loki_endpoints:
-            for e in loki_endpoints:
-                dest = re.sub(r"^(.*?/loki/api/v1)/push$", r"\1/series", e)
+            for endpoint in loki_endpoints:
+                dest = re.sub(r"^(.*?/loki/api/v1)/push$", r"\1/series", endpoint)
                 try:
                     r = request.urlopen(dest)
                     if r.code != 200:
