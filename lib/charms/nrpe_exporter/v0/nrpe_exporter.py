@@ -453,21 +453,19 @@ class NrpeExporterProvider(Object):
 
     def _generate_alert(self, relation, cmd, id, unit) -> dict:
         """Generate an on-the-fly Alert rule."""
+        unit_label = re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-"))
         return {
             "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),
             # Average over 5 minutes considering a 60-second scrape interval
-            "expr": "avg_over_time(command_status{{juju_unit='{}',command='{}'}}[15m]) > 1".format(
-                re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")), cmd
-            )
-            + " or (absent_over_time(up{{juju_unit='{}'}}[10m]) == 1)".format(
-                re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
-            ),
+            "expr": f"avg_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[15m]) > 1"
+            + f" or (absent_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[10m]) == 1)"
+            + f" or (absent_over_time(up{{juju_unit='{unit_label}'}}[10m]) == 1)",
             "for": "0m",
             "labels": {
                 "severity": "{{ if eq $value 0.0 -}} info {{- else if eq $value 1.0 -}} warning {{- else if eq $value 2.0 -}} critical {{- else if eq $value 3.0 -}} error {{- end }}",
                 "juju_model": self.model.name,
                 "juju_application": re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-")),
-                "juju_unit": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
+                "juju_unit": unit_label,
                 "nrpe_application": relation.app.name,
                 "nrpe_unit": unit.name,
             },
