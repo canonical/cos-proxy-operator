@@ -389,27 +389,6 @@ class COSProxyCharm(CharmBase):
                 if endpoint := relation.data[unit].get("endpoint", ""):
                     loki_endpoints.append(json.loads(endpoint)["url"])
 
-        if loki_endpoints:
-            for e in loki_endpoints:
-                dest = re.sub(r"^(.*?/loki/api/v1)/push$", r"\1/series", e)
-                try:
-                    r = request.urlopen(dest)
-                    if r.code != 200:
-                        self.unit.status = BlockedStatus(
-                            "One or more Loki endpoints is not reachable!"
-                        )
-                        return
-                except URLError as e:
-                    logger.warning(
-                        "Error connecting to Loki endpoints: %s (url: %s)",
-                        e,
-                        dest,
-                    )
-                    self.unit.status = BlockedStatus(
-                        "One or more Loki endpoints is not reachable!"
-                    )
-                    return
-
         config = self.vector.config
         with vector_config.open("w") as f:
             f.write(config)
