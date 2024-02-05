@@ -457,7 +457,7 @@ class NrpeExporterProvider(Object):
         if match := re.match(pat, id.replace("_", "-")):
             app_name, unit_num = match.groups()
         else:
-            raise ValueError(f"Invalid unit identifier '{id}': expected a string like 'unit_0'")
+            raise ValueError(f"Invalid unit identifier '{id}': expected a string like 'unit-0'")
 
         unit_label = f"{app_name}/{unit_num}"
         return {
