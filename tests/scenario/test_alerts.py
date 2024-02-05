@@ -24,7 +24,8 @@ def test_relation(ctx, n_remote_units):
         "monitors",
         remote_app_name="remote",
         remote_units_data={
-            i: {"monitors": yaml.safe_dump(monitors_raw)} for i in range(n_remote_units)
+            i: {"monitors": yaml.safe_dump(monitors_raw), "target-id": "juju-ubuntu-0"}
+            for i in range(n_remote_units)
         },
     )
     state_in = State(leader=True, relations=[monitors], networks=[Network.default("monitors")])
