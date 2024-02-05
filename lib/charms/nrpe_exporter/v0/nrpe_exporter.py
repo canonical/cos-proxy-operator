@@ -453,7 +453,13 @@ class NrpeExporterProvider(Object):
 
     def _generate_alert(self, relation, cmd, id, unit) -> dict:
         """Generate an on-the-fly Alert rule."""
-        unit_label = re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-"))
+        pat = r"^(.*?)[-_](\d+)$"
+        if match := re.match(pat, id.replace("_", "-")):
+            app_name, unit_num = match.groups()
+        else:
+            raise ValueError(f"Invalid unit identifier '{id}': expected a string like 'unit_0'")
+
+        unit_label = f"{app_name}/{unit_num}"
         return {
             "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),
             # Average over 5 minutes considering a 60-second scrape interval
@@ -464,7 +470,7 @@ class NrpeExporterProvider(Object):
             "labels": {
                 "severity": "{{ if eq $value 0.0 -}} info {{- else if eq $value 1.0 -}} warning {{- else if eq $value 2.0 -}} critical {{- else if eq $value 3.0 -}} error {{- end }}",
                 "juju_model": self.model.name,
-                "juju_application": re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-")),
+                "juju_application": app_name,
                 "juju_unit": unit_label,
                 "nrpe_application": relation.app.name,
                 "nrpe_unit": unit.name,

@@ -1,0 +1,33 @@
+series: jammy
+
+saas:
+  prom:
+    url: k8s:admin/cos.prom
+
+applications:
+  cp:
+    # charm path is relative to the bundle file
+    charm: ../../cos-proxy_ubuntu-20.04-amd64_ubuntu-22.04-amd64.charm
+    series: focal
+    num_units: 1
+  nrpe:
+    charm: nrpe
+    channel: edge
+  ub:
+    charm: ubuntu
+    channel: edge
+    num_units: 1
+
+relations:
+
+# NRPE forwards names of checks (e.g. "check_conntrack") over the monitors relation
+- - nrpe:monitors
+  - cp:monitors
+
+# NRPE is a subordiante charm, so we use "ubuntu" as a stand-in principal
+- - ub:juju-info
+  - nrpe:general-info
+
+# cos-proxy generated alert rules on-the-fly from the checks it got from the "monitors" relation.
+- - cp:downstream-prometheus-scrape
+  - prom:metrics-endpoint

@@ -1,0 +1,19 @@
+bundle: kubernetes
+applications:
+  prom:
+    charm: prometheus-k8s
+    channel: edge
+    revision: 170
+    scale: 1
+    trust: true
+
+--- # overlay.yaml
+applications:
+  prom:
+    offers:
+      prom:
+        endpoints:
+        - metrics-endpoint
+        - receive-remote-write
+        acl:
+          admin: admin
