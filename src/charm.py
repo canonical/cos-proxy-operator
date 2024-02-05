@@ -41,8 +41,6 @@ import textwrap
 from csv import DictReader, DictWriter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
-from urllib import request
-from urllib.error import URLError
 
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.nrpe_exporter.v0.nrpe_exporter import (
