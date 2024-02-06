@@ -1,6 +1,7 @@
-## Deploy
-First deploy the [`k8s-bundle`](k8s-bundle.yaml) in a k8s model, and then deploy the
-[`lxd-bundle`](lxd-bundle.yaml) in a lxd model.
+## Test NRPE
+### Deploy
+First deploy the [`nrpe-k8s-bundle`](nrpe-k8s-bundle.yaml) in a k8s model, and then deploy the
+[`nrpe-lxd-bundle`](nrpe-lxd-bundle.yaml) in a lxd model.
 
 ```mermaid
 graph LR
@@ -15,7 +16,7 @@ end
 cos-proxy ---prometheus
 ```
 
-## Verify
+### Verify
 - Make sure rule files are available in prometheus:
   - relation data: `juju show-unit prom/0`
   - on disk: `juju ssh --container prometheus prom/0 ls /etc/prometheus/rules`
