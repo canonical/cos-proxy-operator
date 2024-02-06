@@ -453,8 +453,8 @@ class NrpeExporterProvider(Object):
 
     def _generate_alert(self, relation, cmd, id, unit) -> dict:
         """Generate an on-the-fly Alert rule."""
-        pat = r"^(.*?)[-_](\d+)$"
-        if match := re.match(pat, id.replace("_", "-")):
+        pattern = r"^(.*?)[-_](\d+)$"
+        if match := re.match(pattern, id.replace("_", "-")):
             app_name, unit_num = match.groups()
         else:
             raise ValueError(f"Invalid unit identifier '{id}': expected a string like 'unit-0'")
