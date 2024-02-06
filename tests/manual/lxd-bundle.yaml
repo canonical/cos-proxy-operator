@@ -24,7 +24,7 @@ relations:
 - - nrpe:monitors
   - cp:monitors
 
-# NRPE is a subordiante charm, so we use "ubuntu" as a stand-in principal
+# NRPE is a subordinate charm, so we use "ubuntu" as a stand-in principal
 - - ub:juju-info
   - nrpe:general-info
 
