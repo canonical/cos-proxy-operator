@@ -5,14 +5,14 @@ First deploy the [`k8s-bundle`](k8s-bundle.yaml) in a k8s model, and then deploy
 ```mermaid
 graph LR
 subgraph lxd
-ub --- nrpe --- cp
+ububntu --- nrpe --- cos-proxy
 end
 
 subgraph k8s
-prom
+prometheus
 end
 
-cp ---prom
+cos-proxy ---prometheus
 ```
 
 ## Verify
