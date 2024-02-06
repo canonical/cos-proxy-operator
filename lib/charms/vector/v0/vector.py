@@ -84,6 +84,9 @@ sources:
   logstash:
     address: "0.0.0.0:5044"
     type: logstash
+    mode: tcp
+    keepalive:
+      time_secs: 3600
 transforms:
   enrich-nrpe:
     type: remap
