@@ -24,7 +24,7 @@ def test_relation(ctx, n_remote_units):
         "monitors",
         remote_app_name="remote",
         remote_units_data={
-            i: {"monitors": yaml.safe_dump(monitors_raw), "target-id": "juju-ubuntu-0"}
+            i: {"monitors": yaml.safe_dump(monitors_raw), "target-id": "hostname-without-unit-id"}
             for i in range(n_remote_units)
         },
     )
