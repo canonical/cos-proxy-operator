@@ -20,7 +20,13 @@ parts:
     build-packages:
       - curl
     override-pull: |
-      curl -L -O https://github.com/canonical/nrpe_exporter/releases/latest/download/nrpe_exporter-${CRAFT_TARGET_ARCH}
+      if [ $CRAFT_TARGET_ARCH == "amd64" ]; then
+        URI=https://github.com/canonical/nrpe_exporter/releases/latest/download/nrpe_exporter-amd64
+      elif [ $CRAFT_TARGET_ARCH == "arm64" ] || [ $CRAFT_TARGET_ARCH == "aarch64" ]; then
+        URI=https://github.com/canonical/nrpe_exporter/releases/latest/download/nrpe_exporter-arm64
+      fi
+      
+      curl -L $URI -o nrpe_exporter-aarch64
   vector:
     plugin: dump
     source: .
@@ -28,10 +34,10 @@ parts:
       - curl
       - tar
     override-pull: |
-      VERSION=0.27.0
+      VERSION=0.36.0
       if [ $CRAFT_TARGET_ARCH == "amd64" ]; then
         ARCH=x86_64-unknown-linux-musl
-      elif [ $CRAFT_TARGET_ARCH == "aarch64" ]; then
+      elif [ $CRAFT_TARGET_ARCH == "arm64" ]; then
         ARCH=aarch64-unknown-linux-musl
       fi
 
