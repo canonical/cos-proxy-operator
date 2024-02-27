@@ -209,7 +209,16 @@ class COSProxyCharm(CharmBase):
         # Make sure the exporter binary is present with a systemd service
         if not Path("/usr/local/bin/nrpe-exporter").exists():
             arch = platform.machine()
-            arch = "amd64" if arch == "x86_64" else arch
+
+            # Machine names vary. Here we follow Ubuntu's convention of "amd64" and "aarch64".
+            # https://stackoverflow.com/a/45124927/3516684
+            # https://en.wikipedia.org/wiki/Uname
+            if arch in ["x86_64", "amd64"]:
+               arch = "amd64"
+            elif arch in ["aarch64", "arm64", "armv8b", "armv8l"]:
+               arch = "aarch64"
+            # else: keep arch as is
+
             res = "nrpe_exporter-{}".format(arch)
 
             st = Path(res)
