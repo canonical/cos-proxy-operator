@@ -214,9 +214,9 @@ class COSProxyCharm(CharmBase):
             # https://stackoverflow.com/a/45124927/3516684
             # https://en.wikipedia.org/wiki/Uname
             if arch in ["x86_64", "amd64"]:
-               arch = "amd64"
+                arch = "amd64"
             elif arch in ["aarch64", "arm64", "armv8b", "armv8l"]:
-               arch = "aarch64"
+                arch = "aarch64"
             # else: keep arch as is
 
             res = "nrpe_exporter-{}".format(arch)
