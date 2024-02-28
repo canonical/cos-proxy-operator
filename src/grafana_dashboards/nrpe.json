@@ -44,7 +44,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "P4A9D415038E2E9E7"
+        "uid": "$prometheusds"
       },
       "fieldConfig": {
         "defaults": {
@@ -101,10 +101,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "P4A9D415038E2E9E7"
+            "uid": "$prometheusds"
           },
           "editorMode": "builder",
-          "expr": "command_ok{juju_application=\"nrpe\"}",
+          "expr": "command_ok{juju_application=~\"$juju_application\", juju_unit=~\"$juju_unit\"}",
           "legendFormat": "{{command}} ({{juju_unit}})",
           "range": true,
           "refId": "A"
@@ -116,7 +116,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8A483BA4952211CE"
+        "uid": "$lokids"
       },
       "fieldConfig": {
         "defaults": {
@@ -204,7 +204,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8A483BA4952211CE"
+            "uid": "$lokids"
           },
           "editorMode": "code",
           "expr": "{juju_unit=~\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
@@ -312,7 +312,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "P4A9D415038E2E9E7"
+        "uid": "$prometheusds"
       },
       "fieldConfig": {
         "defaults": {
@@ -390,7 +390,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "P4A9D415038E2E9E7"
+            "uid": "$prometheusds"
           },
           "editorMode": "builder",
           "expr": "command_duration{juju_application=\"nrpe\"}",
@@ -405,7 +405,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "P4A9D415038E2E9E7"
+        "uid": "$prometheusds"
       },
       "fieldConfig": {
         "defaults": {
@@ -483,10 +483,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "P4A9D415038E2E9E7"
+            "uid": "$prometheusds"
           },
           "editorMode": "builder",
-          "expr": "scrape_duration_seconds{juju_application=\"nrpe\"}",
+          "expr": "scrape_duration_seconds{juju_application=~\"$juju_application\", juju_unit=~\"$juju_unit\"}",
           "legendFormat": "{{command}} ({{juju_unit}})",
           "range": true,
           "refId": "A"
@@ -498,7 +498,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8A483BA4952211CE"
+        "uid": "$lokids"
       },
       "gridPos": {
         "h": 12,
@@ -522,7 +522,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8A483BA4952211CE"
+            "uid": "$lokids"
           },
           "editorMode": "builder",
           "expr": "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+` | return_code != `0`",
@@ -549,7 +549,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "P8A483BA4952211CE"
+        "uid": "$lokids"
       },
       "gridPos": {
         "h": 14,
@@ -573,7 +573,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "P8A483BA4952211CE"
+            "uid": "$lokids"
           },
           "editorMode": "builder",
           "expr": "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
@@ -602,16 +602,16 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "P4A9D415038E2E9E7"
+          "uid": "$prometheusds"
         },
-        "definition": "label_values(up{juju_application=~\"nrpe\"}, juju_unit)",
+        "definition": "label_values(up{juju_application=~\"$juju_application\"}, juju_unit)",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "juju_unit",
         "options": [],
         "query": {
-          "query": "label_values(up{juju_application=~\"nrpe\"}, juju_unit)",
+          "query": "label_values(up{juju_application=~\"$juju_application\"}, juju_unit)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -619,6 +619,74 @@
         "skipUrlSync": false,
         "sort": 0,
         "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "prometheusds",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "nrpe"
+          ],
+          "value": [
+            "nrpe"
+          ]
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$prometheusds"
+        },
+        "definition": "label_values(up, juju_application)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "juju_application",
+        "options": [],
+        "query": {
+          "query": "label_values(up, juju_application)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "lokids",
+        "options": [],
+        "query": "loki",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
       }
     ]
   },
