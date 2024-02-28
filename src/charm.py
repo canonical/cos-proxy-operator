@@ -116,18 +116,18 @@ class COSProxyCharm(CharmBase):
         self.cos_agent = COSAgentProvider(self, scrape_configs=self._get_scrape_configs)
 
         self.framework.observe(
-            self.on.cos_agent_joined,  # pyright: ignore
-            self._on_cos_agent_joined,
+            self.on.cos_agent_relation_joined,  # pyright: ignore
+            self._on_cos_agent_relation_joined,
         )
 
         self.framework.observe(
-            self.on.cos_agent_changed,  # pyright: ignore
-            self._on_cos_agent_changed,
+            self.on.cos_agent_relation_changed,  # pyright: ignore
+            self._on_cos_agent_relation_changed,
         )
 
         self.framework.observe(
-            self.on.cos_agent_broken,  # pyright: ignore
-            self._on_cos_agent_broken,
+            self.on.cos_agent_relation_broken,  # pyright: ignore
+            self._on_cos_agent_relation_broken,
         )
 
         self.nrpe_exporter = NrpeExporterProvider(self)
@@ -191,15 +191,15 @@ class COSProxyCharm(CharmBase):
 
         self._set_status()
 
-    def _on_cos_agent_joined(self, _):
+    def _on_cos_agent_relation_joined(self, _):
         self._create_dashboard_files("./src/grafana_dashboards")
         self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
 
-    def _on_cos_agent_changed(self, _):
+    def _on_cos_agent_relation_changed(self, _):
         self._create_dashboard_files("./src/grafana_dashboards")
         self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
 
-    def _on_cos_agent_broken(self, _):
+    def _on_cos_agent_relation_broken(self, _):
         self._delete_existing_dashboard_files("./src/grafana_dashboards")
         self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
 
