@@ -66,6 +66,9 @@ from ops.model import ActiveStatus, BlockedStatus
 
 logger = logging.getLogger(__name__)
 
+DASHBOARDS_DIR = "./src/grafana_dashboards"
+RULES_DIR = "./src/prometheus_alert_rules"
+
 
 class COSProxyCharm(CharmBase):
     """This class instantiates Charmed Operator libraries and sets the status of the charm.
@@ -192,23 +195,24 @@ class COSProxyCharm(CharmBase):
         self._set_status()
 
     def _on_cos_agent_relation_joined(self, _):
-        self._create_dashboard_files("./src/grafana_dashboards")
-        self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
+        self._create_dashboard_files(DASHBOARDS_DIR)
+        self._handle_prometheus_alert_rule_files(RULES_DIR)
 
     def _on_cos_agent_relation_changed(self, _):
-        self._create_dashboard_files("./src/grafana_dashboards")
-        self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
+        self._create_dashboard_files(DASHBOARDS_DIR)
+        self._handle_prometheus_alert_rule_files(RULES_DIR)
 
     def _on_cos_agent_relation_broken(self, _):
-        self._delete_existing_dashboard_files("./src/grafana_dashboards")
-        self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
+        self._delete_existing_dashboard_files(DASHBOARDS_DIR)
+        self._handle_prometheus_alert_rule_files(RULES_DIR)
 
-    def _delete_existing_dashboard_files(self, dashboards_dir: Path):
-        if dashboards_dir.exists():
-            for file_path in dashboards_dir.glob("request_*.json"):
+    def _delete_existing_dashboard_files(self, dashboards_dir: str):
+        directory = Path(dashboards_dir)
+        if directory.exists():
+            for file_path in directory.glob("request_*.json"):
                 file_path.unlink()
 
-    def _create_dashboard_files(self, dashboards_dir: Path):
+    def _create_dashboard_files(self, dashboards_dir: str):
         dashboards_rel = self._dashboard_aggregator._target_relation
 
         directory = Path(dashboards_dir)
@@ -224,7 +228,7 @@ class COSProxyCharm(CharmBase):
                     with open(dashboard_file_path, "w") as dashboard_file:
                         json.dump(dashboard, dashboard_file, indent=4)
 
-    def _handle_prometheus_alert_rule_files(self, rules_dir: Path):
+    def _handle_prometheus_alert_rule_files(self, rules_dir: str):
         groups = self.metrics_aggregator._get_groups()
 
         directory = Path(rules_dir)
