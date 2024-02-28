@@ -1839,6 +1839,14 @@ class MetricsEndpointAggregator(Object):
         if not self._charm.unit.is_leader():
             return
 
+        jobs = self._get_jobs()
+        groups = self._get_groups()
+
+        event.relation.data[self._charm.app]["scrape_jobs"] = json.dumps(jobs)
+        event.relation.data[self._charm.app]["alert_rules"] = json.dumps({"groups": groups})
+
+    def _get_jobs(self):
+        """Return the scrape jobs."""
         jobs = [] + _type_convert_stored(
             self._stored.jobs  # pyright: ignore
         )  # list of scrape jobs, one per relation
@@ -1846,7 +1854,10 @@ class MetricsEndpointAggregator(Object):
             targets = self._get_targets(relation)
             if targets and relation.app:
                 jobs.append(self._static_scrape_job(targets, relation.app.name))
+        return jobs
 
+    def _get_groups(self):
+        """Return the  alert rules groups."""
         groups = [] + _type_convert_stored(
             self._stored.alert_rules  # pyright: ignore
         )  # list of alert rule groups
@@ -1858,9 +1869,8 @@ class MetricsEndpointAggregator(Object):
                 group = {"name": self.group_name(appname), "rules": rules}
                 groups.append(group)
 
-        event.relation.data[self._charm.app]["scrape_jobs"] = json.dumps(jobs)
-        event.relation.data[self._charm.app]["alert_rules"] = json.dumps({"groups": groups})
-
+        return groups
+    
     def _on_prometheus_targets_changed(self, event):
         """Update scrape jobs in response to scrape target changes.
 

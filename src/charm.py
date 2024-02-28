@@ -42,6 +42,8 @@ from csv import DictReader, DictWriter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
+from charms.grafana_agent.v0.cos_agent import COSAgentProvider
+
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.nrpe_exporter.v0.nrpe_exporter import (
     NrpeExporterProvider,
@@ -111,6 +113,22 @@ class COSProxyCharm(CharmBase):
         )
 
         self.metrics_aggregator = MetricsEndpointAggregator(self, resolve_addresses=True)
+        self.cos_agent = COSAgentProvider(self, scrape_configs=self._get_scrape_configs)
+
+        self.framework.observe(
+            self.on.cos_agent_joined,  # pyright: ignore
+            self._on_cos_agent_joined,
+        )
+
+        self.framework.observe(
+            self.on.cos_agent_changed,  # pyright: ignore
+            self._on_cos_agent_changed,
+        )
+
+        self.framework.observe(
+            self.on.cos_agent_broken,  # pyright: ignore
+            self._on_cos_agent_broken,
+        )
 
         self.nrpe_exporter = NrpeExporterProvider(self)
         self.framework.observe(
@@ -172,6 +190,53 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(self.on.stop, self._on_stop)
 
         self._set_status()
+
+    def _on_cos_agent_joined(self, _):
+        self._create_dashboard_files("./src/grafana_dashboards")
+        self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
+
+    def _on_cos_agent_changed(self, _):
+        self._create_dashboard_files("./src/grafana_dashboards")
+        self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
+
+    def _on_cos_agent_broken(self, _):
+        self._delete_existing_dashboard_files("./src/grafana_dashboards")
+        self._handle_prometheus_alert_rule_files("./src/prometheus_alert_rules")
+
+    def _delete_existing_dashboard_files(self, dashboards_dir: Path):
+        if dashboards_dir.exists():
+            for file_path in dashboards_dir.glob("request_*.json"):
+                file_path.unlink()
+
+    def _create_dashboard_files(self, dashboards_dir: Path):
+        dashboards_rel = self._dashboard_aggregator._target_relation
+
+        directory = Path(dashboards_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+
+        for relation in self.model.relations[dashboards_rel]:
+            for k in relation.data[self.unit].keys():
+                if k.startswith("request_"):
+                    dashboard = json.loads(relation.data[self.unit][k])["dashboard"]  # type: ignore
+                    dashboard_file_path = (
+                        directory / f"request_{k}.json"
+                    )  # Using the key as filename
+                    with open(dashboard_file_path, "w") as dashboard_file:
+                        json.dump(dashboard, dashboard_file, indent=4)
+
+    def _handle_prometheus_alert_rule_files(self, rules_dir: Path):
+        groups = self.metrics_aggregator._get_groups()
+
+        directory = Path(rules_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+        alert_rules_file_path = directory / "alert_rules.json"
+
+        with open(alert_rules_file_path, "w") as alert_rules_file:
+            json.dump({"groups": groups}, alert_rules_file, indent=4)
+
+    def _get_scrape_configs(self):
+        jobs = self.metrics_aggregator._get_jobs()
+        return jobs
 
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
