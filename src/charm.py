@@ -245,7 +245,7 @@ class COSProxyCharm(CharmBase):
                     with open(dashboard_file_path, "w") as dashboard_file:
                         json.dump(dashboard, dashboard_file, indent=4)
 
-    def _get_jobs(self):
+    def _get_scrape_configs(self):
         """Return the scrape jobs."""
         jobs = [] + _type_convert_stored(
             self.metrics_aggregator._stored.jobs  # pyright: ignore
@@ -256,7 +256,7 @@ class COSProxyCharm(CharmBase):
                 jobs.append(self.metrics_aggregator._static_scrape_job(targets, relation.app.name))
         return jobs
 
-    def _get_groups(self):
+    def _get_alert_groups(self):
         """Return the  alert rules groups."""
         groups = [] + _type_convert_stored(
             self.metrics_aggregator._stored.alert_rules  # pyright: ignore
@@ -271,7 +271,7 @@ class COSProxyCharm(CharmBase):
         return groups
 
     def _handle_prometheus_alert_rule_files(self, rules_dir: str, app_name: str):
-        groups = self._get_groups()
+        groups = self._get_alert_groups()
 
         directory = Path(rules_dir)
         directory.mkdir(parents=True, exist_ok=True)
@@ -280,9 +280,6 @@ class COSProxyCharm(CharmBase):
         with open(alert_rules_file_path, "w") as alert_rules_file:
             yaml.dump({"groups": groups}, alert_rules_file, default_flow_style=False)
 
-    def _get_scrape_configs(self):
-        jobs = self._get_jobs()
-        return jobs
 
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
