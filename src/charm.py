@@ -280,7 +280,6 @@ class COSProxyCharm(CharmBase):
         with open(alert_rules_file_path, "w") as alert_rules_file:
             yaml.dump({"groups": groups}, alert_rules_file, default_flow_style=False)
 
-
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
         self._set_status()
