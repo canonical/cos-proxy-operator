@@ -1,3 +1,4 @@
 git+https://github.com/canonical/operator#egg=ops
 jinja2 < 3
 markupsafe == 2.0.1
+pydantic == 1.10.14

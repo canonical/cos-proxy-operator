@@ -6,6 +6,7 @@ import pytest
 from charm import COSProxyCharm
 from interface_tester import InterfaceTester
 
+
 @pytest.fixture
 def interface_tester(interface_tester: InterfaceTester):
     interface_tester.configure(
