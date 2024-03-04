@@ -41,6 +41,7 @@ import textwrap
 from csv import DictReader, DictWriter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
+from interfaces.prometheus_scrape.v0.schema import AlertGroupModel
 
 import yaml
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
@@ -266,8 +267,9 @@ class COSProxyCharm(CharmBase):
             if unit_rules and relation.app:
                 appname = relation.app.name
                 rules = self.metrics_aggregator._label_alert_rules(unit_rules, appname)
-                group = {"name": self.metrics_aggregator.group_name(appname), "rules": rules}
-                groups.append(group)
+                group_name = self.metrics_aggregator.group_name(appname)
+                group = AlertGroupModel(name=group_name, rules=rules)
+                groups.append(group.model_dump())
         return groups
 
     def _handle_prometheus_alert_rule_files(self, rules_dir: str, app_name: str):
