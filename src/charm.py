@@ -41,7 +41,6 @@ import textwrap
 from csv import DictReader, DictWriter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
-from interfaces.prometheus_scrape.v0.schema import AlertGroupModel
 
 import yaml
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
@@ -63,6 +62,7 @@ from charms.prometheus_k8s.v0.prometheus_scrape import (
     _type_convert_stored,
 )
 from charms.vector.v0.vector import VectorProvider
+from interfaces.prometheus_scrape.v0.schema import AlertGroupModel, AlertRulesModel, ScrapeJobModel
 from ops import RelationBrokenEvent, RelationChangedEvent
 from ops.charm import CharmBase
 from ops.framework import StoredState
@@ -248,20 +248,34 @@ class COSProxyCharm(CharmBase):
 
     def _get_scrape_configs(self):
         """Return the scrape jobs."""
-        jobs = [] + _type_convert_stored(
-            self.metrics_aggregator._stored.jobs  # pyright: ignore
-        )  # list of scrape jobs, one per relation
+        jobs = []
+        stored_jobs = _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore
+        if stored_jobs:
+            for job_data in stored_jobs:
+                stored_jobs_model = ScrapeJobModel(**job_data)
+                jobs.append(stored_jobs_model.dict())
+
         for relation in self.model.relations[self.metrics_aggregator._target_relation]:
             targets = self.metrics_aggregator._get_targets(relation)
             if targets and relation.app:
-                jobs.append(self.metrics_aggregator._static_scrape_job(targets, relation.app.name))
+                target_job_data = self.metrics_aggregator._static_scrape_job(
+                    targets, relation.app.name
+                )
+                target_job = ScrapeJobModel(**target_job_data)
+                jobs.append(target_job.dict())
         return jobs
 
-    def _get_alert_groups(self):
-        """Return the  alert rules groups."""
-        groups = [] + _type_convert_stored(
-            self.metrics_aggregator._stored.alert_rules  # pyright: ignore
-        )  # list of alert rule groups
+    def _get_alert_groups(self) -> AlertRulesModel:
+        """Return the alert rules groups."""
+        alert_rules_model = AlertRulesModel(groups=[])
+        stored_rules = _type_convert_stored(
+            self.metrics_aggregator._stored.alert_rules
+        )  # pyright: ignore
+        if stored_rules:
+            for rule_data in stored_rules:
+                stored_rules_model = AlertGroupModel(**rule_data)
+                alert_rules_model.groups.append(stored_rules_model)
+
         for relation in self.model.relations[self.metrics_aggregator._alert_rules_relation]:
             unit_rules = self.metrics_aggregator._get_alert_rules(relation)
             if unit_rules and relation.app:
@@ -269,8 +283,9 @@ class COSProxyCharm(CharmBase):
                 rules = self.metrics_aggregator._label_alert_rules(unit_rules, appname)
                 group_name = self.metrics_aggregator.group_name(appname)
                 group = AlertGroupModel(name=group_name, rules=rules)
-                groups.append(group.model_dump())
-        return groups
+                alert_rules_model.groups.append(group)
+
+        return alert_rules_model
 
     def _handle_prometheus_alert_rule_files(self, rules_dir: str, app_name: str):
         groups = self._get_alert_groups()
@@ -280,7 +295,7 @@ class COSProxyCharm(CharmBase):
         alert_rules_file_path = directory / f"{app_name}-rules.yaml"
 
         with open(alert_rules_file_path, "w") as alert_rules_file:
-            yaml.dump({"groups": groups}, alert_rules_file, default_flow_style=False)
+            yaml.dump(groups.dict(), alert_rules_file, default_flow_style=False)
 
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
