@@ -161,7 +161,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Prometheus|target|nrpe) relation(s)"),
+            BlockedStatus("Missing one of (Prometheus|target|nrpe|grafana-agent) relation(s)"),
         )
 
     def test_prometheus_relation_without_scrape_target_blocks(self):
@@ -174,7 +174,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Prometheus|target|nrpe) relation(s)"),
+            BlockedStatus("Missing one of (Prometheus|target|nrpe|grafana-agent) relation(s)"),
         )
 
     def test_grafana_relation_without_dashboards_blocks(self):
@@ -187,7 +187,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Grafana|dashboard) relation(s)"),
+            BlockedStatus("Missing one of (Grafana|dashboard|grafana-agent) relation(s)"),
         )
 
     def test_dashboards_without_grafana_relations_blocks(self):
@@ -198,7 +198,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Grafana|dashboard) relation(s)"),
+            BlockedStatus("Missing one of (Grafana|dashboard|grafana-agent) relation(s)"),
         )
 
     def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets(self):

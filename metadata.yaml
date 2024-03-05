@@ -21,6 +21,8 @@ provides:
     interface: prometheus_scrape
   filebeat:
     interface: elastic-beats
+  cos-agent:
+    interface: cos_agent
 
 requires:
   dashboards:

@@ -28,7 +28,7 @@ def test_relation(ctx, n_remote_units):
             for i in range(n_remote_units)
         },
     )
-    state_in = State(leader=True, relations=[monitors], networks=[Network.default("monitors")])
+    state_in = State(leader=True, relations=[monitors], networks={"monitors": Network.default()})
 
     with patch("charm.COSProxyCharm._modify_enrichment_file", new=MagicMock()) as f:
         state_out = ctx.run(monitors.changed_event, state_in)
