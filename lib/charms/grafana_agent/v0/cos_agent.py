@@ -251,7 +251,8 @@ SnapEndpoint = namedtuple("SnapEndpoint", "owner, name")
 
 class CosAgentProviderUnitData(pydantic.BaseModel):
     """Unit databag model for `cos-agent` relation."""
-
+    class Config:
+        arbitrary_types_allowed = True
     # The following entries are the same for all units of the same principal.
     # Note that the same grafana agent subordinate may be related to several apps.
     # this needs to make its way to the gagent leader
@@ -273,7 +274,8 @@ class CosAgentProviderUnitData(pydantic.BaseModel):
 
 class CosAgentPeersUnitData(pydantic.BaseModel):
     """Unit databag model for `peers` cos-agent machine charm peer relation."""
-
+    class Config:
+        arbitrary_types_allowed = True
     # We need the principal unit name and relation metadata to be able to render identifiers
     # (e.g. topology) on the leader side, after all the data moves into peer data (the grafana
     # agent leader can only see its own principal, because it is a subordinate charm).
