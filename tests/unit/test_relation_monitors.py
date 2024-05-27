@@ -97,7 +97,7 @@ class TestRelationMonitors(unittest.TestCase):
 
         # THEN alert rules are transferred to prometheus over relation data
         app_data = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
-        self.assertIn("alert_rules", app_data)
+        self.assertIn("alert_rules", app_data)  # pyright: ignore
 
         # AND status is "active"
         self.assertIsInstance(
