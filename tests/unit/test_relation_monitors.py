@@ -110,7 +110,10 @@ class TestRelationMonitors(unittest.TestCase):
         # AND relabel configs are ok (we are removing nagios_host_context)
         scrape_jobs = json.loads(app_data["scrape_jobs"])
         for job in scrape_jobs:
-            static_configs = job["static_configs"]
-            for config in static_configs:
-                self.assertEquals(config["labels"]["juju_application"], "nrpe")
-                self.assertEquals(config["labels"]["juju_unit"], "nrpe/0")
+            relabel_configs = job["relabel_configs"]
+            for config in relabel_configs:
+                if target_level := config.get("target_label"):
+                    if target_level is "juju_application":
+                        self.assertEquals(target_level, "ubuntu")
+                    elif target_level is "juju_unit":
+                        self.assertEquals(target_level, "ubuntu/0")
