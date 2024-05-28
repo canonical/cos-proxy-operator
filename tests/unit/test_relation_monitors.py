@@ -113,7 +113,7 @@ class TestRelationMonitors(unittest.TestCase):
             relabel_configs = job["relabel_configs"]
             for config in relabel_configs:
                 if target_level := config.get("target_label"):
-                    if target_level is "juju_application":
+                    if target_level == "juju_application":
                         self.assertEquals(target_level, "ubuntu")
-                    elif target_level is "juju_unit":
+                    elif target_level == "juju_unit":
                         self.assertEquals(target_level, "ubuntu/0")
