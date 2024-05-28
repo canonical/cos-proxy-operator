@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,6 +25,7 @@ class TestRelationMonitors(unittest.TestCase):
             "private-address": "10.41.168.226",
             "target-address": "10.41.168.226",
             "target-id": "ubuntu-0",
+            "nagios_host_context": "my-nagios-host-context",
         }
 
         for p in [
@@ -97,6 +99,7 @@ class TestRelationMonitors(unittest.TestCase):
 
         # THEN alert rules are transferred to prometheus over relation data
         app_data = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
+
         self.assertIn("alert_rules", app_data)  # pyright: ignore
 
         # AND status is "active"
@@ -104,3 +107,10 @@ class TestRelationMonitors(unittest.TestCase):
             self.harness.model.unit.status,
             ActiveStatus,
         )
+        # AND relabel configs are ok (we are removing nagios_host_context)
+        scrape_jobs = json.loads(app_data["scrape_jobs"])
+        for job in scrape_jobs:
+            static_configs = job["static_configs"]
+            for config in static_configs:
+                self.assertEquals(config["labels"]["juju_application"], "nrpe")
+                self.assertEquals(config["labels"]["juju_unit"], "nrpe/0")
