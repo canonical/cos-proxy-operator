@@ -498,6 +498,8 @@ class NrpeExporterProvider(Object):
             "target_address", ""
         )
 
+        # "nagios_host_content" is needed to extract it from the "id" parameter (target-id)
+        # so that we can correctly relabel juju_application and juju_unit.
         nagios_host_context = nagios_host_context + "-" if nagios_host_context else ""
 
         return {
