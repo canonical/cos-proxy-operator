@@ -31,7 +31,7 @@ from json.decoder import JSONDecodeError
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
-from ops.charm import CharmBase, RelationEvent, RelationRole
+from ops.charm import CharmBase, RelationRole
 from ops.framework import (
     EventBase,
     EventSource,
@@ -203,14 +203,12 @@ class NrpeTargetsChangedEvent(EventBase):
     def __init__(
         self,
         handle,
-        relation_id,
         current_targets: List[Dict[str, Any]],
         current_alerts: List[Dict[str, Any]],
         removed_targets: List[str],
         removed_alerts: List[str],
     ):
         super().__init__(handle)
-        self.relation_id = relation_id
         self.current_targets = current_targets
         self.current_alerts = current_alerts
         self.removed_targets = removed_targets or []
@@ -219,7 +217,6 @@ class NrpeTargetsChangedEvent(EventBase):
     def snapshot(self):
         """Save target relation information."""
         return {
-            "relation_id": self.relation_id,
             "current_targets": self.current_targets,
             "current_alerts": self.current_alerts,
             "removed_targets": self.removed_targets,
@@ -228,7 +225,6 @@ class NrpeTargetsChangedEvent(EventBase):
 
     def restore(self, snapshot):
         """Restore target relation information."""
-        self.relation_id = snapshot["relation_id"]
         self.current_targets = _type_convert_stored(snapshot["current_targets"])
         self.current_alerts = _type_convert_stored(snapshot["current_alerts"])
         self.removed_targets = _type_convert_stored(snapshot["removed_targets"])
@@ -279,8 +275,15 @@ class NrpeExporterProvider(Object):
             events = self._charm.on[relation_name]
             self.framework.observe(events.relation_changed, self._on_nrpe_relation_changed)
             self.framework.observe(events.relation_departed, self._on_nrpe_relation_changed)
+        self.framework.observe(self._charm.on.upgrade_charm, self._on_upgrade_charm)
 
-    def _on_nrpe_relation_changed(self, event: RelationEvent):
+    def _on_upgrade_charm(self, _: EventBase):
+        self._regenerate_nrpe()
+
+    def _on_nrpe_relation_changed(self, _: EventBase):
+        self._regenerate_nrpe()
+
+    def _regenerate_nrpe(self):
         """Handle changes with related endpoints.
 
         Anytime there are changes in relations between the NRPE exporter
@@ -290,8 +293,6 @@ class NrpeExporterProvider(Object):
         Args:
             event: a `RelationEvent` signifying a change.
         """
-        rel_id = event.relation.id
-
         nrpe_endpoints = []
         nrpe_alerts = []  # type: List[Dict]
 
@@ -314,7 +315,6 @@ class NrpeExporterProvider(Object):
         ]
 
         self.on.nrpe_targets_changed.emit(  # pyright: ignore
-            relation_id=rel_id,
             current_targets=nrpe_endpoints,
             current_alerts=nrpe_alerts,
             removed_targets=removed_endpoints,
