@@ -50,7 +50,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 5
+LIBPATCH = 6
 
 
 logger = logging.getLogger(__name__)
@@ -441,10 +441,14 @@ class NrpeExporterProvider(Object):
                     )
                     id = re.sub(r"^juju[-_]", "", id)
 
+                    nagios_host_context = relation.data[unit].get("nagios_host_context", "")
+
                     alerts.append(self._generate_alert(relation, cmd, id, unit))
 
                     nrpe_endpoints.append(
-                        self._generate_prometheus_job(relation, unit, cmd, exporter_address, id)
+                        self._generate_prometheus_job(
+                            relation, unit, cmd, exporter_address, id, nagios_host_context
+                        )
                     )
             else:
                 logger.debug("No NRPE check is defined.")
@@ -485,12 +489,18 @@ class NrpeExporterProvider(Object):
             },
         }
 
-    def _generate_prometheus_job(self, relation, unit, cmd, exporter_address, id) -> dict:
+    def _generate_prometheus_job(
+        self, relation, unit, cmd, exporter_address, id, nagios_host_context
+    ) -> dict:
         """Generate an on-the-fly Prometheus scrape job."""
         # IP address could be 'target-address' OR 'target_address'
         addr = relation.data[unit].get("target-address", "") or relation.data[unit].get(
             "target_address", ""
         )
+
+        # "nagios_host_content" is needed to extract it from the "id" parameter (target-id)
+        # so that we can correctly relabel juju_application and juju_unit.
+        nagios_host_context = nagios_host_context + "-" if nagios_host_context else ""
 
         return {
             "app_name": relation.app.name,
@@ -511,8 +521,21 @@ class NrpeExporterProvider(Object):
                     },
                     {
                         "target_label": "juju_unit",
-                        # Turn sql-foo-0 or redis_bar_1 into sql-foo/0 or redis-bar/1
-                        "replacement": re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-")),
+                        # Turn nagios-host-context-sql-foo-0 into sql-foo/0
+                        "replacement": re.sub(
+                            r"^(.*?)[-_](\d+)$",
+                            r"\1/\2",
+                            id.replace("_", "-").replace(nagios_host_context, ""),
+                        ),
+                    },
+                    {
+                        "target_label": "juju_application",
+                        # Turn nagios-host-context-sql-foo-0 into sql-foo
+                        "replacement": re.sub(
+                            r"^(.*?)[-_](\d+)$",
+                            r"\1",
+                            id.replace("_", "-").replace(nagios_host_context, ""),
+                        ),
                     },
                 ],
                 "updates": {
