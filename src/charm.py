@@ -572,38 +572,41 @@ class COSProxyCharm(CharmBase):
 
     def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
         """Send NRPE jobs over to MetricsEndpointAggregator."""
-        if event and isinstance(event, NrpeTargetsChangedEvent):
-            removed_targets = event.removed_targets
-            for r in removed_targets:
-                self.metrics_aggregator.remove_prometheus_jobs(r)
+        # Because this function can write many times to the prometheus
+        # relation, wrap it in a prepared update.
+        with self.metrics_aggregator.as_prepared_update():
+            if event and isinstance(event, NrpeTargetsChangedEvent):
+                removed_targets = event.removed_targets
+                for r in removed_targets:
+                    self.metrics_aggregator.remove_prometheus_jobs(r)
 
-            removed_alerts = event.removed_alerts
-            for a in removed_alerts:
-                self.metrics_aggregator.remove_alert_rules(
-                    self.metrics_aggregator.group_name(a["labels"]["juju_unit"]),  # type: ignore
-                    a["labels"]["juju_unit"],  # type: ignore
+                removed_alerts = event.removed_alerts
+                for a in removed_alerts:
+                    self.metrics_aggregator.remove_alert_rules(
+                        self.metrics_aggregator.group_name(a["labels"]["juju_unit"]),  # type: ignore
+                        a["labels"]["juju_unit"],  # type: ignore
+                    )
+
+                nrpes = cast(List[Dict[str, Any]], event.current_targets)
+                current_alerts = event.current_alerts
+            else:
+                # If the event arg is None, then the stored state value is already up-to-date.
+                nrpes = self.nrpe_exporter.endpoints()
+                current_alerts = self.nrpe_exporter.alerts()
+
+            self._modify_enrichment_file(endpoints=nrpes)
+
+            for nrpe in nrpes:
+                self.metrics_aggregator.set_target_job_data(
+                    nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
                 )
 
-            nrpes = cast(List[Dict[str, Any]], event.current_targets)
-            current_alerts = event.current_alerts
-        else:
-            # If the event arg is None, then the stored state value is already up-to-date.
-            nrpes = self.nrpe_exporter.endpoints()
-            current_alerts = self.nrpe_exporter.alerts()
-
-        self._modify_enrichment_file(endpoints=nrpes)
-
-        for nrpe in nrpes:
-            self.metrics_aggregator.set_target_job_data(
-                nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
-            )
-
-        for alert in current_alerts:
-            self.metrics_aggregator.set_alert_rule_data(
-                re.sub(r"/", "_", alert["labels"]["juju_unit"]),
-                alert,
-                label_rules=False,
-            )
+            for alert in current_alerts:
+                self.metrics_aggregator.set_alert_rule_data(
+                    re.sub(r"/", "_", alert["labels"]["juju_unit"]),
+                    alert,
+                    label_rules=False,
+                )
 
     def _set_status(self):
         messages = []
