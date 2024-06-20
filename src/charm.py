@@ -62,6 +62,7 @@ from charms.prometheus_k8s.v0.prometheus_scrape import (
     _type_convert_stored,
 )
 from charms.vector.v0.vector import VectorProvider
+from cosl import MandatoryRelationPairs
 from interfaces.prometheus_scrape.v0.schema import AlertGroupModel, AlertRulesModel, ScrapeJobModel
 from ops import RelationBrokenEvent, RelationChangedEvent
 from ops.charm import CharmBase
@@ -85,6 +86,32 @@ class COSProxyCharm(CharmBase):
     """
 
     _stored = StoredState()
+
+    mandatory_relation_pairs = {
+        "dashboards": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-grafana-dashboard"},
+        ],
+        "filebeat": [  # must be paired with:
+            {"downstream-logging"},
+        ],
+        "monitors": [  # (nrpe) must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "prometheus-target": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        # "prometheus-rules": [  # must be paired with:
+        #     {"cos-agent"},  # or
+        #     {"downstream-prometheus-scrape"},
+        # ],
+        # "prometheus": [  # must be paired with:
+        #     {"cos-agent"},  # or
+        #     {"downstream-prometheus-scrape"},
+        # ],
+    }
 
     def __init__(self, *args):
         super().__init__(*args)
@@ -606,37 +633,41 @@ class COSProxyCharm(CharmBase):
             )
 
     def _set_status(self):
-        messages = []
-        if (
-            (self._stored.have_grafana or self._stored.have_gagent)
-            and not self._stored.have_dashboards
-        ) or (  # pyright: ignore
-            self._stored.have_dashboards
-            and not (self._stored.have_grafana or self._stored.have_gagent)  # pyright: ignore
-        ):
-            messages.append("one of (Grafana|dashboard|grafana-agent)")
+        # Put charm in blocked status if all incoming relations are missing
+        # We could obtain the set of active relations with:
+        # {k for k, v in self.model.relations.items() if v}
+        # but that would incur a relation-list and multiple relation-get calls, so building up from
+        # stored state instead.
+        active_relations = {
+            rel
+            for (rel, indicator) in [
+                ("downstream-grafana-dashboard", self._stored.have_grafana),
+                ("cos-agent", self._stored.have_gagent),
+                ("dashboards", self._stored.have_dashboards),
+                ("downstream-logging", self._stored.have_loki),
+                ("filebeat", self._stored.have_filebeat),
+                ("monitors", self._stored.have_nrpe),
+                ("downstream-prometheus-scrape", self._stored.have_prometheus),
+                ("prometheus-target", self._stored.have_targets),
+            ]
+            if indicator
+        }
 
-        if (
-            self._stored.have_loki  # pyright: ignore
-            and not (self._stored.have_filebeat or self._stored.have_nrpe)  # pyright: ignore
-        ) or (
-            self._stored.have_filebeat and not self._stored.have_loki  # pyright: ignore
-        ):
-            messages.append("one of (Loki|filebeat)")
+        if not set(self.mandatory_relation_pairs.keys()).intersection(active_relations):
+            self.unit.status = BlockedStatus(
+                "Missing incoming relations: {}".format(
+                    "|".join(self.mandatory_relation_pairs.keys())
+                )
+            )
+            return
 
-        if (
-            (self._stored.have_prometheus or self._stored.have_gagent)  # pyright: ignore
-            and not (self._stored.have_targets or self._stored.have_nrpe)  # pyright: ignore
-        ) or (
-            (self._stored.have_targets or self._stored.have_nrpe)  # pyright: ignore
-            and not (self._stored.have_prometheus or self._stored.have_gagent)  # pyright: ignore
+        if missing := MandatoryRelationPairs(self.mandatory_relation_pairs).get_missing_as_str(
+            *active_relations
         ):
-            messages.append("one of (Prometheus|target|nrpe|grafana-agent)")
+            self.unit.status = BlockedStatus(f"Missing {missing}")
+            return
 
-        if messages:
-            self.unit.status = BlockedStatus(f"Missing {', '.join(messages)} relation(s)")
-        else:
-            self.unit.status = ActiveStatus()
+        self.unit.status = ActiveStatus()
 
 
 if __name__ == "__main__":  # pragma: no cover
