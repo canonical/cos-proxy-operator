@@ -87,7 +87,8 @@ class COSProxyCharm(CharmBase):
 
     _stored = StoredState()
 
-    mandatory_relation_pairs = {
+    # The collection of all potential incoming relations
+    relation_pairs = {
         "dashboards": [  # must be paired with:
             {"cos-agent"},  # or
             {"downstream-grafana-dashboard"},
@@ -99,18 +100,22 @@ class COSProxyCharm(CharmBase):
             {"cos-agent"},  # or
             {"downstream-prometheus-scrape"},
         ],
+        "general-info": [  # (nrpe) must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
         "prometheus-target": [  # must be paired with:
             {"cos-agent"},  # or
             {"downstream-prometheus-scrape"},
         ],
-        # "prometheus-rules": [  # must be paired with:
-        #     {"cos-agent"},  # or
-        #     {"downstream-prometheus-scrape"},
-        # ],
-        # "prometheus": [  # must be paired with:
-        #     {"cos-agent"},  # or
-        #     {"downstream-prometheus-scrape"},
-        # ],
+        "prometheus-rules": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "prometheus": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
     }
 
     def __init__(self, *args):
@@ -122,9 +127,12 @@ class COSProxyCharm(CharmBase):
             have_prometheus=False,
             have_targets=False,
             have_nrpe=False,
+            have_general_info_nrpe=False,
             have_loki=False,
             have_filebeat=False,
             have_gagent=False,
+            have_prometheus_rules=False,
+            have_prometheus_manual=False,
         )
 
         self._dashboard_aggregator = GrafanaDashboardAggregator(self)
@@ -232,10 +240,32 @@ class COSProxyCharm(CharmBase):
         )
 
         self.framework.observe(
-            self.on.general_info_relation_joined, self._nrpe_relation_joined  # pyright: ignore
+            self.on.general_info_relation_joined,
+            self._general_info_relation_joined,  # pyright: ignore
         )
         self.framework.observe(
-            self.on.general_info_relation_broken, self._nrpe_relation_broken  # pyright: ignore
+            self.on.general_info_relation_broken,
+            self._general_info_relation_broken,  # pyright: ignore
+        )
+
+        self.framework.observe(
+            self.on.prometheus_rules_relation_joined,
+            self._prometheus_rules_relation_joined,  # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.prometheus_rules_relation_broken,
+            self._prometheus_rules_relation_broken,  # pyright: ignore
+        )
+
+        self.framework.observe(
+            self.on.prometheus_relation_joined,
+            self._prometheus_manual_relation_joined,
+            # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.prometheus_relation_broken,
+            self._prometheus_manual_relation_broken,
+            # pyright: ignore
         )
 
         self.framework.observe(self.on.install, self._on_install)
@@ -336,6 +366,22 @@ class COSProxyCharm(CharmBase):
         self._delete_existing_dashboard_files(DASHBOARDS_DIR)
         self._set_status()
 
+    def _prometheus_rules_relation_joined(self, _):
+        self._stored.have_prometheus_rules = True
+        self._set_status()
+
+    def _prometheus_rules_relation_broken(self, _):
+        self._stored.have_prometheus_rules = False
+        self._set_status()
+
+    def _prometheus_manual_relation_joined(self, _):
+        self._stored.have_prometheus_manual = True
+        self._set_status()
+
+    def _prometheus_manual_relation_broken(self, _):
+        self._stored.have_prometheus_manual = False
+        self._set_status()
+
     def _on_install(self, _):
         """Initial charm setup."""
         # Cull out rsyslog so the disk doesn't fill up, and we don't use it for anything, so we
@@ -358,6 +404,12 @@ class COSProxyCharm(CharmBase):
         self._setup_nrpe_exporter()
         self._start_vector()
         self._stored.have_nrpe = True
+        self._set_status()
+
+    def _general_info_relation_joined(self, _):
+        self._setup_nrpe_exporter()
+        self._start_vector()
+        self._stored.have_general_info_nrpe = True
         self._set_status()
 
     def _setup_nrpe_exporter(self):
@@ -411,6 +463,10 @@ class COSProxyCharm(CharmBase):
 
     def _nrpe_relation_broken(self, _):
         self._stored.have_nrpe = False
+        self._set_status()
+
+    def _general_info_relation_broken(self, _):
+        self._stored.have_general_info_nrpe = False
         self._set_status()
 
     def _on_filebeat_relation_joined(self, event):
@@ -647,21 +703,22 @@ class COSProxyCharm(CharmBase):
                 ("downstream-logging", self._stored.have_loki),
                 ("filebeat", self._stored.have_filebeat),
                 ("monitors", self._stored.have_nrpe),
+                ("general-info", self._stored.have_general_info_nrpe),
                 ("downstream-prometheus-scrape", self._stored.have_prometheus),
                 ("prometheus-target", self._stored.have_targets),
+                ("prometheus-rules", self._stored.have_prometheus_rules),
+                ("prometheus", self._stored.have_prometheus_manual),
             ]
             if indicator
         }
 
-        if not set(self.mandatory_relation_pairs.keys()).intersection(active_relations):
-            self.unit.status = BlockedStatus(
-                "Missing incoming relations: {}".format(
-                    "|".join(self.mandatory_relation_pairs.keys())
-                )
-            )
+        # Set blocked if _all_ incoming relations are missing. This helps notice under-configured
+        # or redundant cos-proxy instances.
+        if not set(self.relation_pairs.keys()).intersection(active_relations):
+            self.unit.status = BlockedStatus("Missing incoming relation(s)")
             return
 
-        if missing := MandatoryRelationPairs(self.mandatory_relation_pairs).get_missing_as_str(
+        if missing := MandatoryRelationPairs(self.relation_pairs).get_missing_as_str(
             *active_relations
         ):
             self.unit.status = BlockedStatus(f"Missing {missing}")

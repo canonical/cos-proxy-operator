@@ -169,10 +169,7 @@ class COSProxyCharmTest(unittest.TestCase):
         self.harness.set_leader(True)
 
         self.assertEqual(
-            self.harness.model.unit.status,
-            BlockedStatus(
-                "Missing incoming relations: dashboards|filebeat|monitors|prometheus-target"
-            ),
+            self.harness.model.unit.status, BlockedStatus("Missing incoming relation(s)")
         )
 
         downstream_rel_id = self.harness.add_relation(
@@ -186,10 +183,7 @@ class COSProxyCharmTest(unittest.TestCase):
         self.harness.add_relation_unit(downstream_rel_id, "cos-grafana/0")
 
         self.assertEqual(
-            self.harness.model.unit.status,
-            BlockedStatus(
-                "Missing incoming relations: dashboards|filebeat|monitors|prometheus-target"
-            ),
+            self.harness.model.unit.status, BlockedStatus("Missing incoming relation(s)")
         )
 
     def test_dashboards_without_grafana_relations_blocks(self):
