@@ -270,16 +270,13 @@ class COSProxyCharm(CharmBase):
 
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.stop, self._on_stop)
-
-        self._set_status()
+        self.framework.observe(self.on.collect_unit_status, self._set_status)
 
     def _on_cos_agent_relation_joined(self, _):
         self._stored.have_gagent = True
-        self._set_status()
 
     def _on_cos_agent_relation_broken(self, _):
         self._stored.have_gagent = False
-        self._set_status()
 
     def _delete_existing_dashboard_files(self, dashboards_dir: str):
         directory = Path(dashboards_dir)
@@ -356,7 +353,6 @@ class COSProxyCharm(CharmBase):
 
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
-        self._set_status()
 
     def _dashboards_relation_changed(self, _):
         self._create_dashboard_files(DASHBOARDS_DIR)
@@ -364,23 +360,18 @@ class COSProxyCharm(CharmBase):
     def _dashboards_relation_broken(self, _):
         self._stored.have_dashboards = False
         self._delete_existing_dashboard_files(DASHBOARDS_DIR)
-        self._set_status()
 
     def _prometheus_rules_relation_joined(self, _):
         self._stored.have_prometheus_rules = True
-        self._set_status()
 
     def _prometheus_rules_relation_broken(self, _):
         self._stored.have_prometheus_rules = False
-        self._set_status()
 
     def _prometheus_manual_relation_joined(self, _):
         self._stored.have_prometheus_manual = True
-        self._set_status()
 
     def _prometheus_manual_relation_broken(self, _):
         self._stored.have_prometheus_manual = False
-        self._set_status()
 
     def _on_install(self, _):
         """Initial charm setup."""
@@ -404,13 +395,11 @@ class COSProxyCharm(CharmBase):
         self._setup_nrpe_exporter()
         self._start_vector()
         self._stored.have_nrpe = True
-        self._set_status()
 
     def _general_info_relation_joined(self, _):
         self._setup_nrpe_exporter()
         self._start_vector()
         self._stored.have_general_info_nrpe = True
-        self._set_status()
 
     def _setup_nrpe_exporter(self):
         # Make sure the exporter binary is present with a systemd service
@@ -463,11 +452,9 @@ class COSProxyCharm(CharmBase):
 
     def _nrpe_relation_broken(self, _):
         self._stored.have_nrpe = False
-        self._set_status()
 
     def _general_info_relation_broken(self, _):
         self._stored.have_general_info_nrpe = False
-        self._set_status()
 
     def _on_filebeat_relation_joined(self, event):
         self._stored.have_filebeat = True
@@ -613,27 +600,21 @@ class COSProxyCharm(CharmBase):
 
     def _filebeat_relation_broken(self, _):
         self._stored.have_filebeat = False
-        self._set_status()
 
     def _downstream_logging_relation_joined(self, _):
         self._stored.have_loki = True
-        self._set_status()
 
     def _downstream_logging_relation_broken(self, _):
         self._stored.have_loki = False
-        self._set_status()
 
     def _downstream_grafana_dashboard_relation_joined(self, _):
         self._stored.have_grafana = True
-        self._set_status()
 
     def _downstream_grafana_dashboard_relation_broken(self, _):
         self._stored.have_grafana = False
-        self._set_status()
 
     def _prometheus_target_relation_joined(self, _):
         self._stored.have_targets = True
-        self._set_status()
 
     def _prometheus_target_relation_changed(self, event: RelationChangedEvent):
         self._handle_prometheus_alert_rule_files(RULES_DIR, event.app.name)
@@ -641,17 +622,14 @@ class COSProxyCharm(CharmBase):
     def _prometheus_target_relation_broken(self, event: RelationBrokenEvent):
         self._stored.have_targets = False
         self._handle_prometheus_alert_rule_files(RULES_DIR, event.app.name)
-        self._set_status()
 
     def _downstream_prometheus_scrape_relation_joined(self, _):
         if self._stored.have_nrpe:  # pyright: ignore
             self._on_nrpe_targets_changed(None)
         self._stored.have_prometheus = True
-        self._set_status()
 
     def _downstream_prometheus_scrape_relation_broken(self, _):
         self._stored.have_prometheus = False
-        self._set_status()
 
     def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
         """Send NRPE jobs over to MetricsEndpointAggregator."""
@@ -688,7 +666,7 @@ class COSProxyCharm(CharmBase):
                 label_rules=False,
             )
 
-    def _set_status(self):
+    def _set_status(self, _event):
         # Put charm in blocked status if all incoming relations are missing
         # We could obtain the set of active relations with:
         # {k for k, v in self.model.relations.items() if v}

@@ -158,6 +158,7 @@ class COSProxyCharmTest(unittest.TestCase):
                 "port": "1234",
             },
         )
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status,
             BlockedStatus(
@@ -167,7 +168,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
     def test_no_incoming_relations_blocks(self):
         self.harness.set_leader(True)
-
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status, BlockedStatus("Missing incoming relation(s)")
         )
@@ -181,7 +182,7 @@ class COSProxyCharmTest(unittest.TestCase):
             "downstream-grafana-dashboard", "cos-grafana"
         )
         self.harness.add_relation_unit(downstream_rel_id, "cos-grafana/0")
-
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status, BlockedStatus("Missing incoming relation(s)")
         )
@@ -191,7 +192,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         downstream_rel_id = self.harness.add_relation("dashboards", "target-app")
         self.harness.add_relation_unit(downstream_rel_id, "target-app/0")
-
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status,
             BlockedStatus("Missing ['cos-agent']|['downstream-grafana-dashboard'] for dashboards"),

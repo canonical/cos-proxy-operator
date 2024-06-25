@@ -103,6 +103,7 @@ class TestRelationMonitors(unittest.TestCase):
         self.assertIn("alert_rules", app_data)  # pyright: ignore
 
         # AND status is "active"
+        self.harness.evaluate_status()
         self.assertIsInstance(
             self.harness.model.unit.status,
             ActiveStatus,
