@@ -694,6 +694,10 @@ class COSProxyCharm(CharmBase):
         # or redundant cos-proxy instances.
         if not set(self.relation_pairs.keys()).intersection(active_relations):
             self.unit.status = BlockedStatus("Missing incoming relation(s)")
+            logger.info(
+                "Missing incoming relation(s). Add one or more of: %s.",
+                ", ".join(self.relation_pairs.keys()),
+            )
             return
 
         if missing := MandatoryRelationPairs(self.relation_pairs).get_missing_as_str(
