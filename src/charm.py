@@ -130,7 +130,7 @@ class COSProxyCharm(CharmBase):
         self.metrics_aggregator = MetricsEndpointAggregator(self, resolve_addresses=True)
         self.cos_agent = COSAgentProvider(
             self,
-            scrape_configs=self._get_scrape_configs,
+            scrape_configs=self._get_scrape_configs(),
             metrics_rules_dir=RULES_DIR,
             dashboard_dirs=[COS_PROXY_DASHBOARDS_DIR, DASHBOARDS_DIR],
             refresh_events=[

@@ -43,3 +43,7 @@ pythonPlatfrom = "All"
 [tool.pytest.ini_options]
 minversion = "6.0"
 log_cli_level = "INFO"
+
+[tool.codespell]
+skip = ".git,.tox,build,lib,venv*,.mypy_cache"
+ignore-words-list = "assertIn"

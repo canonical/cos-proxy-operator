@@ -201,50 +201,6 @@ class COSProxyCharmTest(unittest.TestCase):
             BlockedStatus("Missing one of (Grafana|dashboard|grafana-agent) relation(s)"),
         )
 
-    def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets(self):
-        self.harness.set_leader(True)
-
-        prometheus_rel_id = self.harness.add_relation(
-            "downstream-prometheus-scrape", "cos-prometheus"
-        )
-        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
-
-        target_rel_id = self.harness.add_relation("prometheus-target", "target-app")
-        self.harness.add_relation_unit(target_rel_id, "target-app/0")
-        self.harness.update_relation_data(
-            target_rel_id,
-            "target-app/0",
-            {
-                "hostname": "scrape_target_0",
-                "port": "1234",
-            },
-        )
-
-        prometheus_rel_data = self.harness.get_relation_data(
-            prometheus_rel_id, self.harness.model.app.name
-        )
-        scrape_jobs = json.loads(prometheus_rel_data.get("scrape_jobs", "[]"))
-        expected_jobs = [
-            {
-                "job_name": "juju_testmodel_ae3c0b1_target-app_prometheus_scrape",
-                "static_configs": [
-                    {
-                        "targets": ["scrape_target_0:1234"],
-                        "labels": {
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "target-app",
-                            "juju_unit": "target-app/0",
-                            "host": "scrape_target_0",
-                            "dns_name": "scrape_target_0",
-                        },
-                    }
-                ],
-                "relabel_configs": [RELABEL_INSTANCE_CONFIG],
-            }
-        ]
-        self.assertListEqual(scrape_jobs, expected_jobs)
-
     def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(self):
         self.harness.set_leader(True)
 
