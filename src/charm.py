@@ -693,7 +693,7 @@ class COSProxyCharm(CharmBase):
         # Set blocked if _all_ incoming relations are missing. This helps notice under-configured
         # or redundant cos-proxy instances.
         if not set(self.relation_pairs.keys()).intersection(active_relations):
-            self.unit.status = BlockedStatus("Missing incoming relation(s)")
+            self.unit.status = BlockedStatus("Add at least one incoming relation")
             logger.info(
                 "Missing incoming relation(s). Add one or more of: %s.",
                 ", ".join(self.relation_pairs.keys()),
