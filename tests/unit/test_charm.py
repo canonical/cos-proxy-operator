@@ -23,7 +23,7 @@ import uuid
 from unittest.mock import patch
 
 from charm import COSProxyCharm
-from ops.model import BlockedStatus
+from ops.model import ActiveStatus, BlockedStatus
 from ops.testing import Harness
 
 ALERT_RULE_1 = """- alert: CPU_Usage
@@ -158,36 +158,33 @@ class COSProxyCharmTest(unittest.TestCase):
                 "port": "1234",
             },
         )
-
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Prometheus|target|nrpe|grafana-agent) relation(s)"),
+            BlockedStatus(
+                "Missing ['cos-agent']|['downstream-prometheus-scrape'] for prometheus-target"
+            ),
         )
 
-    def test_prometheus_relation_without_scrape_target_blocks(self):
+    def test_no_incoming_relations_blocks(self):
         self.harness.set_leader(True)
+        self.harness.evaluate_status()
+        self.assertEqual(
+            self.harness.model.unit.status, BlockedStatus("Add at least one incoming relation")
+        )
 
         downstream_rel_id = self.harness.add_relation(
             "downstream-prometheus-scrape", "cos-prometheus"
         )
         self.harness.add_relation_unit(downstream_rel_id, "cos-prometheus/0")
 
-        self.assertEqual(
-            self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Prometheus|target|nrpe|grafana-agent) relation(s)"),
-        )
-
-    def test_grafana_relation_without_dashboards_blocks(self):
-        self.harness.set_leader(True)
-
         downstream_rel_id = self.harness.add_relation(
             "downstream-grafana-dashboard", "cos-grafana"
         )
         self.harness.add_relation_unit(downstream_rel_id, "cos-grafana/0")
-
+        self.harness.evaluate_status()
         self.assertEqual(
-            self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Grafana|dashboard|grafana-agent) relation(s)"),
+            self.harness.model.unit.status, BlockedStatus("Add at least one incoming relation")
         )
 
     def test_dashboards_without_grafana_relations_blocks(self):
@@ -195,11 +192,36 @@ class COSProxyCharmTest(unittest.TestCase):
 
         downstream_rel_id = self.harness.add_relation("dashboards", "target-app")
         self.harness.add_relation_unit(downstream_rel_id, "target-app/0")
-
+        self.harness.evaluate_status()
         self.assertEqual(
             self.harness.model.unit.status,
-            BlockedStatus("Missing one of (Grafana|dashboard|grafana-agent) relation(s)"),
+            BlockedStatus("Missing ['cos-agent']|['downstream-grafana-dashboard'] for dashboards"),
         )
+
+    @patch.object(COSProxyCharm, "_setup_nrpe_exporter")
+    @patch.object(COSProxyCharm, "_start_vector")
+    def test_has_outgoing_dashboard_relation_without_incoming(self, *_unused):
+        """Assert charm is not Blocked when we have a valid subset of the supported relations.
+
+        This tests that if we have a cos-agent, which can consume a dashboard, but no incoming
+        dashboards, that the charm does not block.
+        """
+        self.harness.set_leader(True)
+
+        # WHEN we have a downstream relation that can process dashboards
+        rel_id = self.harness.add_relation("downstream-grafana-dashboard", "grafana")
+        self.harness.add_relation_unit(rel_id, "grafana/0")
+
+        # AND we have some other relation pair in place (e.g. a prometheus target)
+        rel_id = self.harness.add_relation("monitors", "nrpe")
+        self.harness.add_relation_unit(rel_id, "nrpe/0")
+        rel_id = self.harness.add_relation("cos-agent", "cos-agent")
+        self.harness.add_relation_unit(rel_id, "cos-agent/0")
+
+        # AND we have no dashboard relation
+        # THEN the charm should not be blocked
+        self.harness.evaluate_status()
+        self.assertEqual(self.harness.model.unit.status, ActiveStatus())
 
     def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(self):
         self.harness.set_leader(True)

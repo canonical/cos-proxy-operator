@@ -1,5 +1,6 @@
-git+https://github.com/canonical/operator#egg=ops
+ops
 git+https://github.com/canonical/charm-relation-interfaces.git@main
 jinja2 < 3
 markupsafe == 2.0.1
 pydantic > 2
+cosl

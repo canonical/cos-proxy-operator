@@ -62,6 +62,7 @@ from charms.prometheus_k8s.v0.prometheus_scrape import (
     _type_convert_stored,
 )
 from charms.vector.v0.vector import VectorProvider
+from cosl import MandatoryRelationPairs
 from interfaces.prometheus_scrape.v0.schema import AlertGroupModel, AlertRulesModel, ScrapeJobModel
 from ops import RelationBrokenEvent, RelationChangedEvent
 from ops.charm import CharmBase
@@ -86,6 +87,37 @@ class COSProxyCharm(CharmBase):
 
     _stored = StoredState()
 
+    # The collection of all potential incoming relations
+    relation_pairs = {
+        "dashboards": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-grafana-dashboard"},
+        ],
+        "filebeat": [  # must be paired with:
+            {"downstream-logging"},
+        ],
+        "monitors": [  # (nrpe) must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "general-info": [  # (nrpe) must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "prometheus-target": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "prometheus-rules": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "prometheus": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+    }
+
     def __init__(self, *args):
         super().__init__(*args)
 
@@ -95,9 +127,12 @@ class COSProxyCharm(CharmBase):
             have_prometheus=False,
             have_targets=False,
             have_nrpe=False,
+            have_general_info_nrpe=False,
             have_loki=False,
             have_filebeat=False,
             have_gagent=False,
+            have_prometheus_rules=False,
+            have_prometheus_manual=False,
         )
 
         self._dashboard_aggregator = GrafanaDashboardAggregator(self)
@@ -205,24 +240,43 @@ class COSProxyCharm(CharmBase):
         )
 
         self.framework.observe(
-            self.on.general_info_relation_joined, self._nrpe_relation_joined  # pyright: ignore
+            self.on.general_info_relation_joined,
+            self._general_info_relation_joined,  # pyright: ignore
         )
         self.framework.observe(
-            self.on.general_info_relation_broken, self._nrpe_relation_broken  # pyright: ignore
+            self.on.general_info_relation_broken,
+            self._general_info_relation_broken,  # pyright: ignore
+        )
+
+        self.framework.observe(
+            self.on.prometheus_rules_relation_joined,
+            self._prometheus_rules_relation_joined,  # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.prometheus_rules_relation_broken,
+            self._prometheus_rules_relation_broken,  # pyright: ignore
+        )
+
+        self.framework.observe(
+            self.on.prometheus_relation_joined,
+            self._prometheus_manual_relation_joined,
+            # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.prometheus_relation_broken,
+            self._prometheus_manual_relation_broken,
+            # pyright: ignore
         )
 
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.stop, self._on_stop)
-
-        self._set_status()
+        self.framework.observe(self.on.collect_unit_status, self._set_status)
 
     def _on_cos_agent_relation_joined(self, _):
         self._stored.have_gagent = True
-        self._set_status()
 
     def _on_cos_agent_relation_broken(self, _):
         self._stored.have_gagent = False
-        self._set_status()
 
     def _delete_existing_dashboard_files(self, dashboards_dir: str):
         directory = Path(dashboards_dir)
@@ -299,7 +353,6 @@ class COSProxyCharm(CharmBase):
 
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
-        self._set_status()
 
     def _dashboards_relation_changed(self, _):
         self._create_dashboard_files(DASHBOARDS_DIR)
@@ -307,7 +360,18 @@ class COSProxyCharm(CharmBase):
     def _dashboards_relation_broken(self, _):
         self._stored.have_dashboards = False
         self._delete_existing_dashboard_files(DASHBOARDS_DIR)
-        self._set_status()
+
+    def _prometheus_rules_relation_joined(self, _):
+        self._stored.have_prometheus_rules = True
+
+    def _prometheus_rules_relation_broken(self, _):
+        self._stored.have_prometheus_rules = False
+
+    def _prometheus_manual_relation_joined(self, _):
+        self._stored.have_prometheus_manual = True
+
+    def _prometheus_manual_relation_broken(self, _):
+        self._stored.have_prometheus_manual = False
 
     def _on_install(self, _):
         """Initial charm setup."""
@@ -331,7 +395,11 @@ class COSProxyCharm(CharmBase):
         self._setup_nrpe_exporter()
         self._start_vector()
         self._stored.have_nrpe = True
-        self._set_status()
+
+    def _general_info_relation_joined(self, _):
+        self._setup_nrpe_exporter()
+        self._start_vector()
+        self._stored.have_general_info_nrpe = True
 
     def _setup_nrpe_exporter(self):
         # Make sure the exporter binary is present with a systemd service
@@ -384,7 +452,9 @@ class COSProxyCharm(CharmBase):
 
     def _nrpe_relation_broken(self, _):
         self._stored.have_nrpe = False
-        self._set_status()
+
+    def _general_info_relation_broken(self, _):
+        self._stored.have_general_info_nrpe = False
 
     def _on_filebeat_relation_joined(self, event):
         self._stored.have_filebeat = True
@@ -530,27 +600,21 @@ class COSProxyCharm(CharmBase):
 
     def _filebeat_relation_broken(self, _):
         self._stored.have_filebeat = False
-        self._set_status()
 
     def _downstream_logging_relation_joined(self, _):
         self._stored.have_loki = True
-        self._set_status()
 
     def _downstream_logging_relation_broken(self, _):
         self._stored.have_loki = False
-        self._set_status()
 
     def _downstream_grafana_dashboard_relation_joined(self, _):
         self._stored.have_grafana = True
-        self._set_status()
 
     def _downstream_grafana_dashboard_relation_broken(self, _):
         self._stored.have_grafana = False
-        self._set_status()
 
     def _prometheus_target_relation_joined(self, _):
         self._stored.have_targets = True
-        self._set_status()
 
     def _prometheus_target_relation_changed(self, event: RelationChangedEvent):
         self._handle_prometheus_alert_rule_files(RULES_DIR, event.app.name)
@@ -558,17 +622,14 @@ class COSProxyCharm(CharmBase):
     def _prometheus_target_relation_broken(self, event: RelationBrokenEvent):
         self._stored.have_targets = False
         self._handle_prometheus_alert_rule_files(RULES_DIR, event.app.name)
-        self._set_status()
 
     def _downstream_prometheus_scrape_relation_joined(self, _):
         if self._stored.have_nrpe:  # pyright: ignore
             self._on_nrpe_targets_changed(None)
         self._stored.have_prometheus = True
-        self._set_status()
 
     def _downstream_prometheus_scrape_relation_broken(self, _):
         self._stored.have_prometheus = False
-        self._set_status()
 
     def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
         """Send NRPE jobs over to MetricsEndpointAggregator."""
@@ -605,38 +666,47 @@ class COSProxyCharm(CharmBase):
                 label_rules=False,
             )
 
-    def _set_status(self):
-        messages = []
-        if (
-            (self._stored.have_grafana or self._stored.have_gagent)
-            and not self._stored.have_dashboards
-        ) or (  # pyright: ignore
-            self._stored.have_dashboards
-            and not (self._stored.have_grafana or self._stored.have_gagent)  # pyright: ignore
-        ):
-            messages.append("one of (Grafana|dashboard|grafana-agent)")
+    def _set_status(self, _event):
+        # Put charm in blocked status if all incoming relations are missing
+        # We could obtain the set of active relations with:
+        # {k for k, v in self.model.relations.items() if v}
+        # but that would incur a relation-list and multiple relation-get calls, so building up from
+        # stored state instead.
+        active_relations = {
+            rel
+            for (rel, indicator) in [
+                ("downstream-grafana-dashboard", self._stored.have_grafana),
+                ("cos-agent", self._stored.have_gagent),
+                ("dashboards", self._stored.have_dashboards),
+                ("downstream-logging", self._stored.have_loki),
+                ("filebeat", self._stored.have_filebeat),
+                ("monitors", self._stored.have_nrpe),
+                ("general-info", self._stored.have_general_info_nrpe),
+                ("downstream-prometheus-scrape", self._stored.have_prometheus),
+                ("prometheus-target", self._stored.have_targets),
+                ("prometheus-rules", self._stored.have_prometheus_rules),
+                ("prometheus", self._stored.have_prometheus_manual),
+            ]
+            if indicator
+        }
 
-        if (
-            self._stored.have_loki  # pyright: ignore
-            and not (self._stored.have_filebeat or self._stored.have_nrpe)  # pyright: ignore
-        ) or (
-            self._stored.have_filebeat and not self._stored.have_loki  # pyright: ignore
-        ):
-            messages.append("one of (Loki|filebeat)")
+        # Set blocked if _all_ incoming relations are missing. This helps notice under-configured
+        # or redundant cos-proxy instances.
+        if not set(self.relation_pairs.keys()).intersection(active_relations):
+            self.unit.status = BlockedStatus("Add at least one incoming relation")
+            logger.info(
+                "Missing incoming relation(s). Add one or more of: %s.",
+                ", ".join(self.relation_pairs.keys()),
+            )
+            return
 
-        if (
-            (self._stored.have_prometheus or self._stored.have_gagent)  # pyright: ignore
-            and not (self._stored.have_targets or self._stored.have_nrpe)  # pyright: ignore
-        ) or (
-            (self._stored.have_targets or self._stored.have_nrpe)  # pyright: ignore
-            and not (self._stored.have_prometheus or self._stored.have_gagent)  # pyright: ignore
+        if missing := MandatoryRelationPairs(self.relation_pairs).get_missing_as_str(
+            *active_relations
         ):
-            messages.append("one of (Prometheus|target|nrpe|grafana-agent)")
+            self.unit.status = BlockedStatus(f"Missing {missing}")
+            return
 
-        if messages:
-            self.unit.status = BlockedStatus(f"Missing {', '.join(messages)} relation(s)")
-        else:
-            self.unit.status = ActiveStatus()
+        self.unit.status = ActiveStatus()
 
 
 if __name__ == "__main__":  # pragma: no cover
