@@ -11,7 +11,7 @@ Below are a couple of scenarios to test deployment topologies introduced in `INT
 ## Relating over the cos-agent interface
 - Deploy [`cos-lite`](https://charmhub.io/topics/canonical-observability-stack) in a k8s model
   - Offer `grafana:grafana-dashboard` and `prometheus:receive-remote-write` endpoints
-- Consume `grafana:grafana-dashboard` and `prometheus:metrics-endpoint` in a newly created lxd model 
+- Consume `grafana:grafana-dashboard` and `prometheus:receive-remote-write` in a newly created lxd model 
 - Deploy [`cos-proxy-gagent-bundle`](cos-proxy-gagent-bundle.yaml) in the lxd model created previously.
 
 ### Verify
