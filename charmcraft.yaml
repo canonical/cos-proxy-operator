@@ -17,7 +17,7 @@ parts:
     build-packages:
     - "git"
     charm-binary-python-packages:
-      # If we build pyyaml from source, then we won't have the C-optimized lib.
+      # Install PyYAML from binary and avoid building it from sources. This way, we can use PyYAML with C-optimized lib.
       # With the C-optimized lib, serialization in ops is 20x faster.
       - PyYAML
   nrpe-exporter:
