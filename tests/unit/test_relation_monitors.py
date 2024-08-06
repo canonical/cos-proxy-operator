@@ -8,6 +8,8 @@ from charm import COSProxyCharm
 from ops.model import ActiveStatus
 from ops.testing import Harness
 
+NAGIOS_HOST_CONTEXT = "my-nagios-host-context"
+
 
 class TestRelationMonitors(unittest.TestCase):
     def setUp(self):
@@ -25,7 +27,7 @@ class TestRelationMonitors(unittest.TestCase):
             "private-address": "10.41.168.226",
             "target-address": "10.41.168.226",
             "target-id": "my-nagios-host-context-ubuntu-0",
-            "nagios_host_context": "my-nagios-host-context",
+            "nagios_host_context": NAGIOS_HOST_CONTEXT,
         }
 
         for p in [
@@ -106,9 +108,9 @@ class TestRelationMonitors(unittest.TestCase):
 
         for group in groups:
             for rule in group["rules"]:
-                self.assertNotIn("my-nagios-host-context", rule["expr"])
-                self.assertNotIn("my-nagios-host-context", rule["labels"]["juju_application"])
-                self.assertNotIn("my-nagios-host-context", rule["labels"]["juju_unit"])
+                self.assertNotIn(NAGIOS_HOST_CONTEXT, rule["expr"])
+                self.assertNotIn(NAGIOS_HOST_CONTEXT, rule["labels"]["juju_application"])
+                self.assertNotIn(NAGIOS_HOST_CONTEXT, rule["labels"]["juju_unit"])
 
         # AND status is "active"
         self.harness.evaluate_status()
