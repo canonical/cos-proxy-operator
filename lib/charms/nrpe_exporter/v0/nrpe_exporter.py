@@ -475,7 +475,9 @@ class NrpeExporterProvider(Object):
         return {
             "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),
             # Average over 5 minutes considering a 60-second scrape interval
-            "expr": f"avg_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[15m]) > 1"
+            # We need to "round" so the severity label is always set. This is
+            # necessary for PagerDuty's dynamic notifications.
+            "expr": f"round(avg_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[15m])) > 1"
             + f" or (absent_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[10m]) == 1)"
             + f" or (absent_over_time(up{{juju_unit='{unit_label}'}}[10m]) == 1)",
             "for": "0m",
