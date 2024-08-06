@@ -26,7 +26,7 @@ class TestRelationMonitors(unittest.TestCase):
             "monitors": "{'monitors': {'remote': {'nrpe': {'check_conntrack': 'check_conntrack', 'check_systemd_scopes': 'check_systemd_scopes', 'check_reboot': 'check_reboot'}}}, 'version': '0.3'}",
             "private-address": "10.41.168.226",
             "target-address": "10.41.168.226",
-            "target-id": "my-nagios-host-context-ubuntu-0",
+            "target-id": f"{NAGIOS_HOST_CONTEXT}-ubuntu-0",
             "nagios_host_context": NAGIOS_HOST_CONTEXT,
         }
 
