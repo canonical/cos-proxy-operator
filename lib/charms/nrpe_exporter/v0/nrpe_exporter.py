@@ -443,7 +443,9 @@ class NrpeExporterProvider(Object):
 
                     nagios_host_context = relation.data[unit].get("nagios_host_context", "")
 
-                    alerts.append(self._generate_alert(relation, cmd, id, unit))
+                    alerts.append(
+                        self._generate_alert(relation, cmd, id, unit, nagios_host_context)
+                    )
 
                     nrpe_endpoints.append(
                         self._generate_prometheus_job(
@@ -455,10 +457,16 @@ class NrpeExporterProvider(Object):
 
         return nrpe_endpoints, alerts
 
-    def _generate_alert(self, relation, cmd, id, unit) -> dict:
+    def _generate_alert(self, relation, cmd, id, unit, nagios_host_context) -> dict:
         """Generate an on-the-fly Alert rule."""
         unit_label = re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-"))
         app_label = re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-"))
+
+        # "nagios_host_content" is needed to extract it from the "id" parameter (target-id)
+        # so that we can correctly relabel juju_application and juju_unit.
+        nagios_host_context = nagios_host_context + "-" if nagios_host_context else ""
+        unit_label = unit_label.replace(nagios_host_context, "")
+        app_label = app_label.replace(nagios_host_context, "")
 
         return {
             "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),

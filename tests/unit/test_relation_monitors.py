@@ -24,7 +24,7 @@ class TestRelationMonitors(unittest.TestCase):
             "monitors": "{'monitors': {'remote': {'nrpe': {'check_conntrack': 'check_conntrack', 'check_systemd_scopes': 'check_systemd_scopes', 'check_reboot': 'check_reboot'}}}, 'version': '0.3'}",
             "private-address": "10.41.168.226",
             "target-address": "10.41.168.226",
-            "target-id": "ubuntu-0",
+            "target-id": "my-nagios-host-context-ubuntu-0",
             "nagios_host_context": "my-nagios-host-context",
         }
 
@@ -97,10 +97,18 @@ class TestRelationMonitors(unittest.TestCase):
         rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
         self.harness.add_relation_unit(rel_id_prom, "prom/0")
 
-        # THEN alert rules are transferred to prometheus over relation data
+        # THEN alert rules are transferred to prometheus over relation data and
+        # nagios_host_context is not part of the expr.
         app_data = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
-
         self.assertIn("alert_rules", app_data)  # pyright: ignore
+
+        groups = json.loads((app_data["alert_rules"]))["groups"]
+
+        for group in groups:
+            for rule in group["rules"]:
+                self.assertNotIn("my-nagios-host-context", rule["expr"])
+                self.assertNotIn("my-nagios-host-context", rule["labels"]["juju_application"])
+                self.assertNotIn("my-nagios-host-context", rule["labels"]["juju_unit"])
 
         # AND status is "active"
         self.harness.evaluate_status()
