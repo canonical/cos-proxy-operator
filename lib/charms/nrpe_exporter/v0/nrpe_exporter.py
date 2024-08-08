@@ -457,16 +457,20 @@ class NrpeExporterProvider(Object):
 
         return nrpe_endpoints, alerts
 
+    def _remove_host_context(self, label: str, nagios_host_context: str) -> str:
+        # "nagios_host_content" is needed to extract it from the "label" which is generated
+        # using the "target-id"
+        # so that we can correctly relabel juju_application and juju_unit.
+        nagios_host_context = nagios_host_context + "-" if nagios_host_context else ""
+        return label.replace(nagios_host_context, "", 1)
+
     def _generate_alert(self, relation, cmd, id, unit, nagios_host_context) -> dict:
         """Generate an on-the-fly Alert rule."""
         unit_label = re.sub(r"^(.*?)[-_](\d+)$", r"\1/\2", id.replace("_", "-"))
         app_label = re.sub(r"^(.*?)[-_]\d+$", r"\1", id.replace("_", "-"))
 
-        # "nagios_host_content" is needed to extract it from the "id" parameter (target-id)
-        # so that we can correctly relabel juju_application and juju_unit.
-        nagios_host_context = nagios_host_context + "-" if nagios_host_context else ""
-        unit_label = unit_label.replace(nagios_host_context, "")
-        app_label = app_label.replace(nagios_host_context, "")
+        unit_label = self._remove_host_context(unit_label, nagios_host_context)
+        app_label = self._remove_host_context(app_label, nagios_host_context)
 
         return {
             "alert": "{}NrpeAlert".format("".join([x.title() for x in cmd.split("_")])),
@@ -506,10 +510,6 @@ class NrpeExporterProvider(Object):
             "target_address", ""
         )
 
-        # "nagios_host_content" is needed to extract it from the "id" parameter (target-id)
-        # so that we can correctly relabel juju_application and juju_unit.
-        nagios_host_context = nagios_host_context + "-" if nagios_host_context else ""
-
         return {
             "app_name": relation.app.name,
             "target": {
@@ -533,7 +533,7 @@ class NrpeExporterProvider(Object):
                         "replacement": re.sub(
                             r"^(.*?)[-_](\d+)$",
                             r"\1/\2",
-                            id.replace("_", "-").replace(nagios_host_context, ""),
+                            self._remove_host_context(id.replace("_", "-"), nagios_host_context),
                         ),
                     },
                     {
@@ -542,7 +542,7 @@ class NrpeExporterProvider(Object):
                         "replacement": re.sub(
                             r"^(.*?)[-_](\d+)$",
                             r"\1",
-                            id.replace("_", "-").replace(nagios_host_context, ""),
+                            self._remove_host_context(id.replace("_", "-"), nagios_host_context),
                         ),
                     },
                 ],

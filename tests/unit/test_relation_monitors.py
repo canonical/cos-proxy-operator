@@ -8,7 +8,10 @@ from charm import COSProxyCharm
 from ops.model import ActiveStatus
 from ops.testing import Harness
 
-NAGIOS_HOST_CONTEXT = "my-nagios-host-context"
+NAGIOS_HOST_CONTEXT = "ubuntu"
+POD_NAME = "ubuntu-is-amazing-0"
+JUJU_UNIT = "ubuntu-is-amazing/0"
+JUJU_APP = "ubuntu-is-amazing"
 
 
 class TestRelationMonitors(unittest.TestCase):
@@ -26,7 +29,7 @@ class TestRelationMonitors(unittest.TestCase):
             "monitors": "{'monitors': {'remote': {'nrpe': {'check_conntrack': 'check_conntrack', 'check_systemd_scopes': 'check_systemd_scopes', 'check_reboot': 'check_reboot'}}}, 'version': '0.3'}",
             "private-address": "10.41.168.226",
             "target-address": "10.41.168.226",
-            "target-id": f"{NAGIOS_HOST_CONTEXT}-ubuntu-0",
+            "target-id": f"{NAGIOS_HOST_CONTEXT}-{POD_NAME}",
             "nagios_host_context": NAGIOS_HOST_CONTEXT,
         }
 
@@ -44,6 +47,7 @@ class TestRelationMonitors(unittest.TestCase):
         self.harness.add_network("10.41.168.226")
         self.harness.set_model_info(name="mymodel", uuid="fe2c9bbb-58ab-40e4-8f70-f27480093fca")
         self.harness.set_leader(True)
+        self.maxDiff = None
 
     def tearDown(self):
         self.mock_enrichment_file.unlink(missing_ok=True)
@@ -61,9 +65,9 @@ class TestRelationMonitors(unittest.TestCase):
         expected = "\n".join(
             [
                 "composite_key,juju_application,juju_unit,command,ipaddr",
-                "10.41.168.226_check_conntrack,ubuntu,ubuntu/0,check_conntrack,10.41.168.226",
-                "10.41.168.226_check_systemd_scopes,ubuntu,ubuntu/0,check_systemd_scopes,10.41.168.226",
-                "10.41.168.226_check_reboot,ubuntu,ubuntu/0,check_reboot,10.41.168.226",
+                f"10.41.168.226_check_conntrack,{JUJU_APP},{JUJU_UNIT},check_conntrack,10.41.168.226",
+                f"10.41.168.226_check_systemd_scopes,{JUJU_APP},{JUJU_UNIT},check_systemd_scopes,10.41.168.226",
+                f"10.41.168.226_check_reboot,{JUJU_APP},{JUJU_UNIT},check_reboot,10.41.168.226",
                 "",
             ]
         )
@@ -72,16 +76,21 @@ class TestRelationMonitors(unittest.TestCase):
         # AND WHEN the relation data updates with a different prefix
         # The following simulates `juju config nrpe nagios_host_context="context-1"`
         self.harness.update_relation_data(
-            rel_id, "nrpe/0", {**self.default_unit_data, **{"target-id": "context-1-ubuntu-0"}}
+            rel_id,
+            "nrpe/0",
+            {
+                **self.default_unit_data,
+                **{"target-id": "context-1-ubuntu-0", "nagios_host_context": "context-1"},
+            },
         )
 
         # THEN the csv file is replaced with targets with the modified prefix
         expected = "\n".join(
             [
                 "composite_key,juju_application,juju_unit,command,ipaddr",
-                "10.41.168.226_check_conntrack,context-1-ubuntu,context-1-ubuntu/0,check_conntrack,10.41.168.226",
-                "10.41.168.226_check_systemd_scopes,context-1-ubuntu,context-1-ubuntu/0,check_systemd_scopes,10.41.168.226",
-                "10.41.168.226_check_reboot,context-1-ubuntu,context-1-ubuntu/0,check_reboot,10.41.168.226",
+                "10.41.168.226_check_conntrack,ubuntu,ubuntu/0,check_conntrack,10.41.168.226",
+                "10.41.168.226_check_systemd_scopes,ubuntu,ubuntu/0,check_systemd_scopes,10.41.168.226",
+                "10.41.168.226_check_reboot,ubuntu,ubuntu/0,check_reboot,10.41.168.226",
                 "",
             ]
         )
@@ -108,9 +117,9 @@ class TestRelationMonitors(unittest.TestCase):
 
         for group in groups:
             for rule in group["rules"]:
-                self.assertNotIn(NAGIOS_HOST_CONTEXT, rule["expr"])
-                self.assertNotIn(NAGIOS_HOST_CONTEXT, rule["labels"]["juju_application"])
-                self.assertNotIn(NAGIOS_HOST_CONTEXT, rule["labels"]["juju_unit"])
+                self.assertIn(f"juju_unit='{JUJU_UNIT}'", rule["expr"])
+                self.assertEqual(JUJU_APP, rule["labels"]["juju_application"])
+                self.assertEqual(JUJU_UNIT, rule["labels"]["juju_unit"])
 
         # AND status is "active"
         self.harness.evaluate_status()
@@ -125,6 +134,6 @@ class TestRelationMonitors(unittest.TestCase):
             for config in relabel_configs:
                 if target_level := config.get("target_label"):
                     if target_level == "juju_application":
-                        self.assertEqual(config["replacement"], "ubuntu")
+                        self.assertEqual(config["replacement"], JUJU_APP)
                     elif target_level == "juju_unit":
-                        self.assertEqual(config["replacement"], "ubuntu/0")
+                        self.assertEqual(config["replacement"], JUJU_UNIT)
