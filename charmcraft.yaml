@@ -16,7 +16,7 @@ parts:
   charm:
     build-packages:
     - "git"
-    # rustc and cargo required to build tracing lib's dependency pydantic
+    # rustc and cargo required to build pydantic
     - rustc
     - cargo
     charm-binary-python-packages:
