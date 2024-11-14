@@ -322,6 +322,7 @@ of Metrics provider charms hold eponymous information.
 
 """  # noqa: W505
 
+import contextlib
 import copy
 import hashlib
 import ipaddress
@@ -1811,6 +1812,8 @@ class MetricsEndpointAggregator(Object):
 
         self._relabel_instance = relabel_instance
         self._resolve_addresses = resolve_addresses
+        self._is_prepared_update = False
+        self._prepared = None
 
         # manage Prometheus charm relation events
         prometheus_events = self._charm.on[self._prometheus_relation]
@@ -1837,6 +1840,9 @@ class MetricsEndpointAggregator(Object):
         """
         if not self._charm.unit.is_leader():
             return
+
+        if self._is_prepared_update:
+            raise Exception("Can't set prometheus data for new relation when we are in a prepared update")
 
         jobs = [] + _type_convert_stored(
             self._stored.jobs  # pyright: ignore
@@ -1894,11 +1900,11 @@ class MetricsEndpointAggregator(Object):
         updated_job = self._static_scrape_job(targets, app_name, **kwargs)
 
         for relation in self.model.relations[self._prometheus_relation]:
-            jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
+            jobs = self._get_relation_data(relation, "scrape_jobs", "[]")
             # list of scrape jobs that have not changed
             jobs = [job for job in jobs if updated_job["job_name"] != job["job_name"]]
             jobs.append(updated_job)
-            relation.data[self._charm.app]["scrape_jobs"] = json.dumps(jobs)
+            self._set_relation_data(relation, "scrape_jobs", jobs)
 
             if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
                 self._stored.jobs = jobs
@@ -1927,7 +1933,7 @@ class MetricsEndpointAggregator(Object):
             return
 
         for relation in self.model.relations[self._prometheus_relation]:
-            jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
+            jobs = self._get_relation_data(relation, "scrape_jobs", "[]")
             if not jobs:
                 continue
 
@@ -1950,7 +1956,7 @@ class MetricsEndpointAggregator(Object):
                 changed_job["static_configs"] = configs_kept  # type: ignore
                 jobs.append(changed_job)
 
-            relation.data[self._charm.app]["scrape_jobs"] = json.dumps(jobs)
+            self._set_relation_data(relation, "scrape_jobs", jobs)
 
             if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
                 self._stored.jobs = jobs
@@ -2119,7 +2125,7 @@ class MetricsEndpointAggregator(Object):
         updated_group = {"name": self.group_name(name), "rules": rules}
 
         for relation in self.model.relations[self._prometheus_relation]:
-            alert_rules = json.loads(relation.data[self._charm.app].get("alert_rules", "{}"))
+            alert_rules = self._get_relation_data(relation, "alert_rules", "{}")
             groups = alert_rules.get("groups", [])
             # list of alert rule groups that have not changed
             for group in groups:
@@ -2129,7 +2135,7 @@ class MetricsEndpointAggregator(Object):
 
             if updated_group["name"] not in [g["name"] for g in groups]:
                 groups.append(updated_group)
-            relation.data[self._charm.app]["alert_rules"] = json.dumps({"groups": groups})
+            self._set_relation_data(relation, "alert_rules", {"groups": groups})
 
             if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
                 self._stored.alert_rules = groups
@@ -2150,7 +2156,7 @@ class MetricsEndpointAggregator(Object):
             return
 
         for relation in self.model.relations[self._prometheus_relation]:
-            alert_rules = json.loads(relation.data[self._charm.app].get("alert_rules", "{}"))
+            alert_rules = self._get_relation_data(relation, "alert_rules", "{}")
             if not alert_rules:
                 continue
 
@@ -2177,9 +2183,9 @@ class MetricsEndpointAggregator(Object):
                 changed_group["rules"] = rules_kept  # type: ignore
                 groups.append(changed_group)
 
-            relation.data[self._charm.app]["alert_rules"] = (
-                json.dumps({"groups": groups}) if groups else "{}"
-            )
+            self._set_relation_data(relation, "alert_rules", (
+                {"groups": groups} if groups else {}
+            ))
 
             if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
                 self._stored.alert_rules = groups
@@ -2252,6 +2258,65 @@ class MetricsEndpointAggregator(Object):
                 labeled_rules.append(rule)
 
         return labeled_rules
+
+    @contextlib.contextmanager
+    def as_prepared_update(self):
+        """Put this object into prepared-update mode as a context manager
+
+        Prepared update will store the changes to any prometheus relation data
+        temporarily in _prepared and will apply them to the relation when the
+        context manager finishes.
+        """
+        self._activate_prepared_update()
+        try:
+            yield
+        finally:
+            # Apply updates, even if there was an exception, as this most
+            # closely represents the behaviour without prepared updates.
+            self._apply_prepared_update()
+
+    def _activate_prepared_update(self):
+        """Initialize the prepared update variables"""
+        if self._is_prepared_update:
+            raise Exception("Can't activate prepared update twice")
+        self._prepared = {}
+        self._is_prepared_update = True
+
+    def _apply_prepared_update(self):
+        """Apply prepared data to the prometheus relation.
+
+        Take any prometheus relation information that was set during the
+        prepared update and apply it to the prometheus relation for real.
+        """
+        if not self._is_prepared_update:
+            raise Exception("No prepared update to apply")
+        for relation in self.model.relations[self._prometheus_relation]:
+            if relation.id not in self._prepared:
+                continue
+            for key in ["scrape_jobs"]:
+                relation.data[self._charm.app]["scrape_jobs"] = json.dumps(self._prepared[relation.id][key])
+
+        self._is_prepared_update = False
+
+    def _set_relation_data(self, relation, field: str, data):
+        """Set upstream relation data, taking into account prepared updates.
+        """
+        if self._is_prepared_update:
+            if relation.id not in self._prepared:
+                self._prepared[relation.id] = {}
+            self._prepared[relation.id][field] = data
+        else:
+            relation.data[self._charm.app][field] = json.dumps(data)
+
+    def _get_relation_data(self, relation, field: str, default: str):
+        """Get upstream relation data, taking into account prepared updates.
+        """
+        if self._is_prepared_update:
+            if relation.id not in self._prepared or field not in self._prepared[relation.id]:
+                return json.loads(default)
+            return self._prepared[relation.id][field]
+        else:
+            return json.loads(relation.data[self._charm.app].get(field, default))
 
 
 class CosTool:
