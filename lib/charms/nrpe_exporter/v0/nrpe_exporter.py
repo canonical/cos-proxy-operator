@@ -477,9 +477,11 @@ class NrpeExporterProvider(Object):
             # Average over 5 minutes considering a 60-second scrape interval
             # We need to "round" so the severity label is always set. This is
             # necessary for PagerDuty's dynamic notifications.
+            #
+            # We multiply the `absent_over_time` by 2 so the value is mapped to a critical severity.
             "expr": f"round(avg_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[15m])) > 1"
-            + f" or (absent_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[10m]) == 1)"
-            + f" or (absent_over_time(up{{juju_unit='{unit_label}'}}[10m]) == 1)",
+            + f" or ((absent_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[10m]) == 1))*2"
+            + f" or ((absent_over_time(up{{juju_unit='{unit_label}'}}[10m]) == 1))*2",
             "for": "0m",
             "labels": {
                 "severity": "{{ if eq $value 0.0 -}} info {{- else if eq $value 1.0 -}} warning {{- else if eq $value 2.0 -}} critical {{- else if eq $value 3.0 -}} error {{- end }}",
