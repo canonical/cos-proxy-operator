@@ -3,8 +3,9 @@
 # from unittest.mock import patch
 
 import pytest
-from charm import COSProxyCharm
 from interface_tester import InterfaceTester
+
+from charm import COSProxyCharm
 
 
 @pytest.fixture

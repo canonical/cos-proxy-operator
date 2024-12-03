@@ -3,9 +3,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-from charm import COSProxyCharm
 from charms.nrpe_exporter.v0.nrpe_exporter import NrpeTargetsChangedEvent
 from scenario import Context, Network, Relation, State
+
+from charm import COSProxyCharm
 
 
 @pytest.fixture
