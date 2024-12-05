@@ -40,7 +40,7 @@ def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets():
 
     model_name = "testmodel"
     model_uuid = "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f"
-    model = scenario.Model(model_name, model_uuid)
+    model = scenario.Model(name=model_name, uuid=model_uuid)
 
     ctx = scenario.Context(COSProxyCharm, meta=get_charm_meta())
     state_in = scenario.State(
@@ -70,8 +70,8 @@ def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets():
     ]
 
     # Act
-    out = ctx.run(prometheus_target_relation.changed_event, state_in)
-
+    out = ctx.run(ctx.on.relation_changed(relation=prometheus_target_relation), state=state_in)
+    relation = next(iter(out.relations))
     # Assert
-    actual_jobs = json.loads(out.relations[0].local_app_data.get("scrape_jobs", []))
+    actual_jobs = json.loads(relation.local_app_data.get("scrape_jobs", []))
     assert actual_jobs == expected_jobs
