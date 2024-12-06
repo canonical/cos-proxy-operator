@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 from charms.nrpe_exporter.v0.nrpe_exporter import NrpeTargetsChangedEvent
-from scenario import Address, BindAddress, Context, Network, Relation, State, StoredState
+from scenario import Context, Relation, State, StoredState
 
 from charm import COSProxyCharm
 
@@ -30,13 +30,9 @@ def test_relation(ctx, n_remote_units):
             for i in range(n_remote_units)
         },
     )
-    network = Network("monitors", [BindAddress([Address("192.0.2.1")])])
 
     stored_state = StoredState(owner_path="COSProxyCharm", name="_stored", content={})
-
-    state_in = State(
-        leader=True, relations=[monitors], networks={network}, stored_states={stored_state}
-    )
+    state_in = State(leader=True, relations=[monitors], stored_states={stored_state})
 
     with patch("charm.COSProxyCharm._modify_enrichment_file", new=MagicMock()) as f:
         state_out = ctx.run(ctx.on.relation_changed(relation=monitors), state_in)
