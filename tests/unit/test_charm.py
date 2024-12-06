@@ -22,9 +22,10 @@ import unittest
 import uuid
 from unittest.mock import patch
 
-from charm import COSProxyCharm
 from ops.model import ActiveStatus, BlockedStatus
 from ops.testing import Harness
+
+from charm import COSProxyCharm
 
 ALERT_RULE_1 = """- alert: CPU_Usage
   expr: cpu_usage_idle{is_container!=\"True\", group=\"promoagents-juju\"} < 10

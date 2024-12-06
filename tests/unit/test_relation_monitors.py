@@ -4,9 +4,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from charm import COSProxyCharm
 from ops.model import ActiveStatus
 from ops.testing import Harness
+
+from charm import COSProxyCharm
 
 NAGIOS_HOST_CONTEXT = "ubuntu"
 POD_NAME = "ubuntu-is-amazing-0"
