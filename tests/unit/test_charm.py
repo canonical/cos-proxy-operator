@@ -18,6 +18,7 @@
 import base64
 import json
 import lzma
+import socket
 import unittest
 import uuid
 from unittest.mock import patch
@@ -134,6 +135,32 @@ DUMMY_FIXED_2 = {
 }
 
 
+EXPECTED_VECTOR_SCRAPE = {
+    "job_name": "juju_testmodel_ae3c0b1_cos-proxy_prometheus_scrape",
+    "static_configs": [
+        {
+            "targets": [f"{socket.gethostbyname(socket.getfqdn())}:9090"],
+            "labels": {
+                "juju_model": "testmodel",
+                "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                "juju_application": "cos-proxy",
+                "juju_unit": "cos-proxy/0",
+                "host": socket.gethostbyname(socket.getfqdn()),
+                "dns_name": socket.getfqdn(),
+            },
+        }
+    ],
+    "relabel_configs": [
+        {
+            "source_labels": ["juju_model", "juju_model_uuid", "juju_application", "juju_unit"],
+            "separator": "_",
+            "target_label": "instance",
+            "regex": "(.*)",
+        }
+    ],
+}
+
+
 @patch.object(lzma, "compress", new=lambda x, *args, **kwargs: x)
 @patch.object(lzma, "decompress", new=lambda x, *args, **kwargs: x)
 @patch.object(uuid, "uuid4", new=lambda: "21838076-1191-4a88-8008-234433115007")
@@ -223,6 +250,28 @@ class COSProxyCharmTest(unittest.TestCase):
         # THEN the charm should not be blocked
         self.harness.evaluate_status()
         self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+
+    @patch.object(COSProxyCharm, "_setup_nrpe_exporter")
+    @patch.object(COSProxyCharm, "_start_vector")
+    @patch.object(COSProxyCharm, "_modify_enrichment_file")
+    def test_has_vector_scrape_job_when_nrpe_relation_is_present(self, *_unused):
+        self.harness.set_leader(True)
+
+        rel_id = self.harness.add_relation("monitors", "nrpe")
+        self.harness.add_relation_unit(rel_id, "nrpe/0")
+
+        # WHEN we have a downstream relation that can process dashboards
+        prometheus_rel_id = self.harness.add_relation(
+            "downstream-prometheus-scrape", "cos-prometheus"
+        )
+        self.harness.add_relation_unit(prometheus_rel_id, "cos-prometheus/0")
+
+        prometheus_rel_data = self.harness.get_relation_data(
+            prometheus_rel_id, self.harness.model.app.name
+        )
+
+        scrape_jobs = json.loads(prometheus_rel_data.get("scrape_jobs", "[]"))
+        self.assertEqual(scrape_jobs, [EXPECTED_VECTOR_SCRAPE])
 
     def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(self):
         self.harness.set_leader(True)
