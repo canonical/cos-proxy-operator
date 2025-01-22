@@ -75,6 +75,7 @@ logger = logging.getLogger(__name__)
 DASHBOARDS_DIR = "./src/cos_agent/grafana_dashboards"
 COS_PROXY_DASHBOARDS_DIR = "./src/grafana_dashboards"
 RULES_DIR = "./src/cos_agent/prometheus_alert_rules"
+VECTOR_PORT = 9090
 
 
 class COSProxyCharm(CharmBase):
@@ -460,7 +461,7 @@ class COSProxyCharm(CharmBase):
         self._stored.have_filebeat = True
         self._start_vector()
 
-        event.relation.data[self.unit]["private-address"] = socket.getfqdn()
+        event.relation.data[self.unit]["private-address"] = self.hostname
         event.relation.data[self.unit]["port"] = "5044"
 
     def _start_vector(self):
@@ -659,6 +660,10 @@ class COSProxyCharm(CharmBase):
                 nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
             )
 
+        # Add vector scrape job
+        target = {self.unit.name: {"hostname": self.host, "port": VECTOR_PORT}}
+        self.metrics_aggregator.set_target_job_data(target, self.app.name)
+
         for alert in current_alerts:
             self.metrics_aggregator.set_alert_rule_data(
                 re.sub(r"/", "_", alert["labels"]["juju_unit"]),
@@ -707,6 +712,16 @@ class COSProxyCharm(CharmBase):
             return
 
         self.unit.status = ActiveStatus()
+
+    @property
+    def hostname(self) -> str:
+        """Unit's hostname."""
+        return socket.getfqdn()
+
+    @property
+    def host(self) -> str:
+        """Unit's hostname."""
+        return socket.gethostbyname(self.hostname)
 
 
 if __name__ == "__main__":  # pragma: no cover
