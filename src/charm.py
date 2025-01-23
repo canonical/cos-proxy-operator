@@ -720,7 +720,7 @@ class COSProxyCharm(CharmBase):
 
     @property
     def host(self) -> str:
-        """Unit's hostname."""
+        """Unit's ip address."""
         return socket.gethostbyname(self.hostname)
 
 
