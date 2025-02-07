@@ -118,9 +118,12 @@ class TestRelationMonitors(unittest.TestCase):
 
         for group in groups:
             for rule in group["rules"]:
-                self.assertIn(f"juju_unit='{JUJU_UNIT}'", rule["expr"])
-                self.assertEqual(JUJU_APP, rule["labels"]["juju_application"])
-                self.assertEqual(JUJU_UNIT, rule["labels"]["juju_unit"])
+                if rule["labels"].get("juju_charm") == "cos-proxy":
+                    self.assertEqual("cos-proxy", rule["labels"]["juju_application"])
+                else:
+                    self.assertIn(f"juju_unit='{JUJU_UNIT}'", rule["expr"])
+                    self.assertEqual(JUJU_APP, rule["labels"]["juju_application"])
+                    self.assertEqual(JUJU_UNIT, rule["labels"]["juju_unit"])
 
         # AND status is "active"
         self.harness.evaluate_status()

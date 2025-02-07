@@ -42,11 +42,12 @@ def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets():
     model_uuid = "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f"
     model = scenario.Model(name=model_name, uuid=model_uuid)
 
-    ctx = scenario.Context(COSProxyCharm, meta=get_charm_meta())
+    ctx = scenario.Context(COSProxyCharm)
     state_in = scenario.State(
         leader=True,
         relations=[prometheus_scrape_relation, prometheus_target_relation],
         model=model,
+        config={"forward_alert_rules": True},
     )
 
     expected_jobs = [

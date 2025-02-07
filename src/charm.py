@@ -163,7 +163,11 @@ class COSProxyCharm(CharmBase):
             self._downstream_grafana_dashboard_relation_broken,
         )
 
-        self.metrics_aggregator = MetricsEndpointAggregator(self, resolve_addresses=True)
+        self.metrics_aggregator = MetricsEndpointAggregator(
+            self,
+            resolve_addresses=True,
+            forward_alert_rules=cast(bool, self.config["forward_alert_rules"]),
+        )
         self.cos_agent = COSAgentProvider(
             self,
             scrape_configs=self._get_scrape_configs(),
@@ -195,10 +199,12 @@ class COSProxyCharm(CharmBase):
 
         self.vector = VectorProvider(self)
         self.framework.observe(
-            self.on.filebeat_relation_joined, self._on_filebeat_relation_joined  # pyright: ignore
+            self.on.filebeat_relation_joined,
+            self._on_filebeat_relation_joined,  # pyright: ignore
         )
         self.framework.observe(
-            self.vector.on.config_changed, self._write_vector_config  # pyright: ignore
+            self.vector.on.config_changed,
+            self._write_vector_config,  # pyright: ignore
         )
 
         self.framework.observe(
@@ -234,10 +240,12 @@ class COSProxyCharm(CharmBase):
         )
 
         self.framework.observe(
-            self.on.monitors_relation_joined, self._nrpe_relation_joined  # pyright: ignore
+            self.on.monitors_relation_joined,
+            self._nrpe_relation_joined,  # pyright: ignore
         )
         self.framework.observe(
-            self.on.monitors_relation_broken, self._nrpe_relation_broken  # pyright: ignore
+            self.on.monitors_relation_broken,
+            self._nrpe_relation_broken,  # pyright: ignore
         )
 
         self.framework.observe(
@@ -272,6 +280,11 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(self.on.install, self._on_install)
         self.framework.observe(self.on.stop, self._on_stop)
         self.framework.observe(self.on.collect_unit_status, self._set_status)
+
+        self.framework.observe(self.on.config_changed, self._update_alerts)
+
+    def _update_alerts(self, _):
+        self.metrics_aggregator.reset_prometheus_alerts()
 
     def _on_cos_agent_relation_joined(self, _):
         self._stored.have_gagent = True
@@ -323,9 +336,7 @@ class COSProxyCharm(CharmBase):
     def _get_alert_groups(self) -> AlertRulesModel:
         """Return the alert rules groups."""
         alert_rules_model = AlertRulesModel(groups=[])
-        stored_rules = _type_convert_stored(
-            self.metrics_aggregator._stored.alert_rules
-        )  # pyright: ignore
+        stored_rules = _type_convert_stored(self.metrics_aggregator._stored.alert_rules)  # pyright: ignore
         if stored_rules:
             for rule_data in stored_rules:
                 stored_rules_model = AlertGroupModel(**rule_data)

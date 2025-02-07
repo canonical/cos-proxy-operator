@@ -340,33 +340,71 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 1)
-        group = groups[0]
-        expected_group = {
-            "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
-            "rules": [
-                {
-                    "alert": "CPU_Usage",
-                    "expr": 'cpu_usage_idle{is_container!="True", group="promoagents-juju"} < 10',
-                    "for": "5m",
-                    "labels": {
-                        "override_group_by": "host",
-                        "severity": "page",
-                        "cloud": "juju",
-                        "juju_model": "testmodel",
-                        "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                        "juju_application": "rules-app",
-                        "juju_unit": "rules-app/0",
+        self.assertEqual(len(groups), 2)
+        expected_groups = [
+            {
+                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
+                "rules": [
+                    {
+                        "alert": "HostDown",
+                        "expr": "up < 1",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Host '{{ $labels.instance }}' is down.",
+                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
                     },
-                    "annotations": {
-                        "description": "Host {{ $labels.host }} has had <  10% idle cpu for the last 5m\n",
-                        "summary": "Host {{ $labels.host }} CPU free is less than 10%",
+                    {
+                        "alert": "HostMetricsMissing",
+                        "expr": "absent(up)",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
+                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
                     },
-                }
-            ],
-        }
+                ],
+            },
+            {
+                "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
+                "rules": [
+                    {
+                        "alert": "CPU_Usage",
+                        "expr": 'cpu_usage_idle{is_container!="True", group="promoagents-juju"} < 10',
+                        "for": "5m",
+                        "labels": {
+                            "override_group_by": "host",
+                            "severity": "page",
+                            "cloud": "juju",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "rules-app",
+                            "juju_unit": "rules-app/0",
+                        },
+                        "annotations": {
+                            "description": "Host {{ $labels.host }} has had <  10% idle cpu for the last 5m\n",
+                            "summary": "Host {{ $labels.host }} CPU free is less than 10%",
+                        },
+                    }
+                ],
+            },
+        ]
 
-        self.assertDictEqual(group, expected_group)
+        self.assertListEqual(groups, expected_groups)
 
     def test_alert_rules_are_forwarded_on_adding_targets_then_prometheus(self):
         self.harness.set_leader(True)
@@ -390,32 +428,70 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 1)
-        group = groups[0]
-        expected_group = {
-            "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
-            "rules": [
-                {
-                    "alert": "CPU_Usage",
-                    "expr": 'cpu_usage_idle{is_container!="True", group="promoagents-juju"} < 10',
-                    "for": "5m",
-                    "labels": {
-                        "override_group_by": "host",
-                        "severity": "page",
-                        "cloud": "juju",
-                        "juju_model": "testmodel",
-                        "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                        "juju_application": "rules-app",
-                        "juju_unit": "rules-app/0",
+        self.assertEqual(len(groups), 2)
+        expected_groups = [
+            {
+                "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
+                "rules": [
+                    {
+                        "alert": "CPU_Usage",
+                        "expr": 'cpu_usage_idle{is_container!="True", group="promoagents-juju"} < 10',
+                        "for": "5m",
+                        "labels": {
+                            "override_group_by": "host",
+                            "severity": "page",
+                            "cloud": "juju",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "rules-app",
+                            "juju_unit": "rules-app/0",
+                        },
+                        "annotations": {
+                            "description": "Host {{ $labels.host }} has had <  10% idle cpu for the last 5m\n",
+                            "summary": "Host {{ $labels.host }} CPU free is less than 10%",
+                        },
+                    }
+                ],
+            },
+            {
+                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
+                "rules": [
+                    {
+                        "alert": "HostDown",
+                        "expr": "up < 1",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Host '{{ $labels.instance }}' is down.",
+                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
                     },
-                    "annotations": {
-                        "description": "Host {{ $labels.host }} has had <  10% idle cpu for the last 5m\n",
-                        "summary": "Host {{ $labels.host }} CPU free is less than 10%",
+                    {
+                        "alert": "HostMetricsMissing",
+                        "expr": "absent(up)",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
+                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
                     },
-                }
-            ],
-        }
-        self.assertDictEqual(group, expected_group)
+                ],
+            },
+        ]
+        self.assertListEqual(groups, expected_groups)
 
     def test_multiple_scrape_jobs_are_forwarded(self):
         self.harness.set_leader(True)
@@ -522,8 +598,45 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups), 3)  # HostHealth added automatically
         expected_groups = [
+            {
+                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
+                "rules": [
+                    {
+                        "alert": "HostDown",
+                        "expr": "up < 1",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Host '{{ $labels.instance }}' is down.",
+                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
+                    },
+                    {
+                        "alert": "HostMetricsMissing",
+                        "expr": "absent(up)",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
+                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
+                    },
+                ],
+            },
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app-1_alert_rules",
                 "rules": [
@@ -662,14 +775,51 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups), 3)
 
         self.harness.remove_relation_unit(alert_rules_rel_id_2, "rules-app-2/0")
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups), 2)
 
         expected_groups = [
+            {
+                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
+                "rules": [
+                    {
+                        "alert": "HostDown",
+                        "expr": "up < 1",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Host '{{ $labels.instance }}' is down.",
+                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
+                    },
+                    {
+                        "alert": "HostMetricsMissing",
+                        "expr": "absent(up)",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
+                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
+                    },
+                ],
+            },
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app-1_alert_rules",
                 "rules": [
@@ -790,15 +940,52 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups), 2)
 
         self.harness.remove_relation_unit(alert_rules_rel_id, "rules-app/1")
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups), 2)
 
         expected_groups = [
+            {
+                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
+                "rules": [
+                    {
+                        "alert": "HostDown",
+                        "expr": "up < 1",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Host '{{ $labels.instance }}' is down.",
+                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
+                    },
+                    {
+                        "alert": "HostMetricsMissing",
+                        "expr": "absent(up)",
+                        "for": "5m",
+                        "labels": {
+                            "severity": "critical",
+                            "juju_model": "testmodel",
+                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                            "juju_application": "cos-proxy",
+                            "juju_charm": "cos-proxy",
+                        },
+                        "annotations": {
+                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
+                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                        },
+                    },
+                ],
+            },
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
                 "rules": [
