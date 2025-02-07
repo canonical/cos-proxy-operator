@@ -336,7 +336,9 @@ class COSProxyCharm(CharmBase):
     def _get_alert_groups(self) -> AlertRulesModel:
         """Return the alert rules groups."""
         alert_rules_model = AlertRulesModel(groups=[])
-        stored_rules = _type_convert_stored(self.metrics_aggregator._stored.alert_rules)  # pyright: ignore
+        stored_rules = _type_convert_stored(
+            self.metrics_aggregator._stored.alert_rules
+        )  # pyright: ignore
         if stored_rules:
             for rule_data in stored_rules:
                 stored_rules_model = AlertGroupModel(**rule_data)

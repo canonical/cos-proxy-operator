@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-import json
 from charms.nrpe_exporter.v0.nrpe_exporter import NrpeTargetsChangedEvent
 from scenario import Context, Relation, State, StoredState
 
@@ -72,7 +71,6 @@ def test_relation(ctx, n_remote_units):
 
 @pytest.mark.parametrize("forwarding", (True, False))
 def test_forward_alerts(ctx, forwarding):
-    monitors_raw = {"nrpe": {"nrpe": "foo"}, "target_id": "bar"}
     prometheus_relation = Relation(
         "downstream-prometheus-scrape",
         remote_app_name="prometheus",
@@ -90,7 +88,7 @@ def test_forward_alerts(ctx, forwarding):
         config={"forward_alert_rules": forwarding},
     )
 
-    with patch("charm.COSProxyCharm._modify_enrichment_file", new=MagicMock()) as f:
+    with patch("charm.COSProxyCharm._modify_enrichment_file", new=MagicMock()):
         state_out = ctx.run(ctx.on.config_changed(), state_in)
         prometheus_relation_out = state_out.get_relation(prometheus_relation.id)
         if forwarding:

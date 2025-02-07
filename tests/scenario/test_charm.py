@@ -3,7 +3,6 @@ import json
 import scenario
 
 from charm import COSProxyCharm
-from tests.scenario.helpers import get_charm_meta
 
 RELABEL_INSTANCE_CONFIG = {
     "source_labels": [
