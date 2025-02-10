@@ -79,7 +79,7 @@ def test_forward_alerts(ctx, forwarding):
     stored_state = StoredState(
         owner_path="COSProxyCharm/MetricsEndpointAggregator[downstream-prometheus-scrape]",
         name="_stored",
-        content={"alert_rules": {"groups": [{"name": "foo", "rules": []}]}},
+        content={"alert_rules": [{"name": "foo", "rules": []}]},
     )
     state_in = State(
         leader=True,
