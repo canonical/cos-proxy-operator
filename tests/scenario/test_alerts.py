@@ -67,3 +67,31 @@ def test_relation(ctx, n_remote_units):
     known_remote_units3 = set(chain(*(e["target"].keys() for e in call_args["endpoints"])))
 
     assert known_remote_units == known_remote_units3
+
+
+@pytest.mark.parametrize("forwarding", (True, False))
+def test_forward_alerts(ctx, forwarding):
+    prometheus_relation = Relation(
+        "downstream-prometheus-scrape",
+        remote_app_name="prometheus",
+    )
+
+    stored_state = StoredState(
+        owner_path="COSProxyCharm/MetricsEndpointAggregator[downstream-prometheus-scrape]",
+        name="_stored",
+        content={"alert_rules": [{"name": "foo", "rules": []}]},
+    )
+    state_in = State(
+        leader=True,
+        relations=[prometheus_relation],
+        stored_states={stored_state},
+        config={"forward_alert_rules": forwarding},
+    )
+
+    with patch("charm.COSProxyCharm._modify_enrichment_file", new=MagicMock()):
+        state_out = ctx.run(ctx.on.config_changed(), state_in)
+        prometheus_relation_out = state_out.get_relation(prometheus_relation.id)
+        if forwarding:
+            assert prometheus_relation_out.local_app_data["alert_rules"] != '{"groups": []}'
+        else:
+            assert prometheus_relation_out.local_app_data["alert_rules"] == '{"groups": []}'
