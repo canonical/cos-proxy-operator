@@ -4,3 +4,13 @@ options:
       Toggle forwarding of alert rules.
     type: boolean
     default: true
+  nrpe_alert_on_warning:
+    description: |
+      Enable alerting on NRPE warnings 
+
+      When true, the expression changes from `round(avg_over_time(command_status) > 1` to `round(avg_over_time(command_status) >= 1` and alerts will still be labelled as `severity: warning`.
+      From the NRPE severity calculation, `1` means warning and `2` means critical.
+
+      Warning: some users may have dynamic alerting (e.g. in PagerDuty) and these would warnings could flood notifications.
+    type: boolean
+    default: false

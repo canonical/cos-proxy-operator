@@ -28,7 +28,7 @@ import json
 import logging
 import re
 from json.decoder import JSONDecodeError
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import yaml
 from ops.charm import CharmBase, RelationRole
@@ -276,8 +276,12 @@ class NrpeExporterProvider(Object):
             self.framework.observe(events.relation_changed, self._on_nrpe_relation_changed)
             self.framework.observe(events.relation_departed, self._on_nrpe_relation_changed)
         self.framework.observe(self._charm.on.upgrade_charm, self._on_upgrade_charm)
+        self.framework.observe(self._charm.on.config_changed, self._on_config_changed)
 
     def _on_upgrade_charm(self, _: EventBase):
+        self._regenerate_nrpe()
+
+    def _on_config_changed(self, _: EventBase):
         self._regenerate_nrpe()
 
     def _on_nrpe_relation_changed(self, _: EventBase):
@@ -479,7 +483,7 @@ class NrpeExporterProvider(Object):
             # necessary for PagerDuty's dynamic notifications.
             #
             # We multiply the `absent_over_time` by 2 so the value is mapped to a critical severity.
-            "expr": f"round(avg_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[15m])) > 1"
+            "expr": f"round(avg_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[15m])) {'>=' if cast(bool, self._charm.model.config.get('nrpe_alert_on_warning')) else '>'} 1"
             + f" or ((absent_over_time(command_status{{juju_unit='{unit_label}',command='{cmd}'}}[10m]) == 1))*2"
             + f" or ((absent_over_time(up{{juju_unit='{unit_label}'}}[10m]) == 1))*2",
             "for": "0m",
