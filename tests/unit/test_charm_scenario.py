@@ -73,5 +73,5 @@ def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets():
     out = ctx.run(ctx.on.relation_changed(relation=prometheus_target_relation), state=state_in)
     relation = next(iter(out.relations))
     # Assert
-    actual_jobs = json.loads(relation.local_app_data.get("scrape_jobs", []))
+    actual_jobs = json.loads(relation.local_app_data.get("scrape_jobs", "[]"))
     assert actual_jobs == expected_jobs
