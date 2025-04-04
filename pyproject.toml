@@ -1,5 +1,39 @@
 # Copyright 2021 Canonical Ltd.
 # See LICENSE file for licensing details.
+[project]
+name = "cos-proxy"
+version = "0.0"
+requires-python = "~=3.8"
+
+dependencies = [
+  "ops",
+  "jinja2<3",
+  "markupsafe==2.0.1",
+  "charm-relation-interfaces@git+https://github.com/canonical/charm-relation-interfaces@main",
+  "pydantic>2",
+  "cosl",
+  "cryptography",
+  "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+  # Linting
+  "ruff",
+  "codespell",
+  # Static
+  "pyright",
+  "responses==0.20.0",
+  "httpcore==0.14.7",
+  # Unit
+  "pytest",
+  "coverage[toml]",
+  "ops[testing]",
+  "fs",
+  "deepdiff",
+  # Interface
+  "pytest-interface-tester"
+]
 
 # Testing tools configuration
 [tool.coverage.run]
@@ -8,17 +42,12 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 
-# Formatting tools configuration
-[tool.black]
-line-length = 99
-target-version = ["py38"]
-
 # Linting tools configuration
 [tool.ruff]
 line-length = 99
 extend-exclude = ["__pycache__", "*.egg_info"]
-select = ["E", "W", "F", "C", "N", "R", "D", "I001"]
-ignore = [
+lint.select = ["E", "W", "F", "C", "N", "R", "D", "I001"]
+lint.ignore = [
   "E501", # Using black creates errors with this
   "D107", # Missing docstring in __init__
   "W605", # Pyright not recognizing raw strings
@@ -26,24 +55,26 @@ ignore = [
   "C901"
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 # D100, D101, D102, D103: Ignore missing docstrings in tests
 "tests/*" = ["D100","D101","D102","D103"]
 "lib/charms/nrpe_exporter/*" = ["C901"]
 
-[tool.ruff.pydocstyle]
+[tool.ruff.lint.pydocstyle]
 convention = "google"
 
 # Static analysis tools configuration
 [tool.pyright]
-extraPaths = ["lib"]
+extraPaths = ["src", "lib"]
 pythonVersion = "3.8"
 pythonPlatfrom = "All"
 
 [tool.pytest.ini_options]
 minversion = "6.0"
 log_cli_level = "INFO"
+asyncio_mode = "auto"
+addopts = "--tb=native --verbose --capture=no --log-cli-level=INFO"
 
 [tool.codespell]
-skip = ".git,.tox,build,lib,venv*,.mypy_cache"
+skip = ".git,.tox,build,venv*"
 ignore-words-list = "assertIn"
