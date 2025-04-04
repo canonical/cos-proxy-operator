@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
-from charms.nrpe_exporter.v0.nrpe_exporter import NrpeTargetsChangedEvent
+from nrpe_exporter import NrpeTargetsChangedEvent
 from scenario import Context, Relation, State, StoredState
 
 from charm import COSProxyCharm
