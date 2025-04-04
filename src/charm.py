@@ -45,10 +45,6 @@ from typing import Any, Dict, List, Optional, cast
 import yaml
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
-from charms.nrpe_exporter.v0.nrpe_exporter import (
-    NrpeExporterProvider,
-    NrpeTargetsChangedEvent,
-)
 from charms.operator_libs_linux.v0.apt import remove_package
 from charms.operator_libs_linux.v1.systemd import (
     daemon_reload,
@@ -61,7 +57,6 @@ from charms.prometheus_k8s.v0.prometheus_scrape import (
     MetricsEndpointAggregator,
     _type_convert_stored,
 )
-from charms.vector.v0.vector import VectorProvider
 from cosl import MandatoryRelationPairs
 from interfaces.prometheus_scrape.v0.schema import AlertGroupModel, AlertRulesModel, ScrapeJobModel
 from ops import RelationBrokenEvent, RelationChangedEvent
@@ -69,6 +64,12 @@ from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus
+
+from nrpe_exporter import (
+    NrpeExporterProvider,
+    NrpeTargetsChangedEvent,
+)
+from vector import VectorProvider
 
 logger = logging.getLogger(__name__)
 

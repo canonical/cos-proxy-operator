@@ -187,7 +187,7 @@ class VectorEvents(ObjectEvents):
 class VectorProvider(Object):
     """A provider for Vector, an observability swiss-army knife."""
 
-    on = VectorEvents()
+    on = VectorEvents()  # type: ignore
 
     def __init__(self, charm: CharmBase, relation_names: Optional[dict] = None):
         """A Vector exporter.
