@@ -321,7 +321,7 @@ class COSProxyCharm(CharmBase):
         stored_jobs = _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore
         if stored_jobs:
             for job_data in stored_jobs:
-                stored_jobs_model = ScrapeJobModel(**job_data)
+                stored_jobs_model = ScrapeJobModel(**job_data)  # pyright: ignore
                 jobs.append(stored_jobs_model.dict())
 
         for relation in self.model.relations[self.metrics_aggregator._target_relation]:
@@ -337,12 +337,10 @@ class COSProxyCharm(CharmBase):
     def _get_alert_groups(self) -> AlertRulesModel:
         """Return the alert rules groups."""
         alert_rules_model = AlertRulesModel(groups=[])
-        stored_rules = _type_convert_stored(
-            self.metrics_aggregator._stored.alert_rules
-        )  # pyright: ignore
+        stored_rules = _type_convert_stored(self.metrics_aggregator._stored.alert_rules)  # pyright: ignore
         if stored_rules:
             for rule_data in stored_rules:
-                stored_rules_model = AlertGroupModel(**rule_data)
+                stored_rules_model = AlertGroupModel(**rule_data)  # pyright: ignore
                 alert_rules_model.groups.append(stored_rules_model)
 
         for relation in self.model.relations[self.metrics_aggregator._alert_rules_relation]:
@@ -651,7 +649,7 @@ class COSProxyCharm(CharmBase):
         if event and isinstance(event, NrpeTargetsChangedEvent):
             removed_targets = event.removed_targets
             for r in removed_targets:
-                self.metrics_aggregator.remove_prometheus_jobs(r)
+                self.metrics_aggregator.remove_prometheus_jobs(r)  # type: ignore
 
             removed_alerts = event.removed_alerts
             for a in removed_alerts:
@@ -680,8 +678,8 @@ class COSProxyCharm(CharmBase):
 
         for alert in current_alerts:
             self.metrics_aggregator.set_alert_rule_data(
-                re.sub(r"/", "_", alert["labels"]["juju_unit"]),
-                alert,
+                re.sub(r"/", "_", alert["labels"]["juju_unit"]),  # type: ignore
+                alert,  # type: ignore
                 label_rules=False,
             )
 
