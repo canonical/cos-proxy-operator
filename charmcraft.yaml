@@ -1,29 +1,29 @@
+# Copyright 2021 Canonical
+# See LICENSE file for licensing details.
+name: cos-proxy
 type: charm
-bases:
-  - build-on:
-    - name: "ubuntu"
-      channel: "20.04"
-    run-on:
-    - name: "ubuntu"
-      channel: "20.04"
-  - build-on:
-    - name: "ubuntu"
-      channel: "22.04"
-    run-on:
-    - name: "ubuntu"
-      channel: "22.04"
+summary: |
+  Single integration point in the machine world with Kubernetes-based COS.
+description: |
+  This Juju machine charm that provides a single integration point in the
+  machine world with Kubernetes-based Canonical Observability Stack.
+
+links:
+  documentation: https://discourse.charmhub.io/t/cos-proxy-operator-docs-index/5611
+
+platforms:
+  ubuntu@20.04:amd64:
+  ubuntu@22.04:amd64:
+
 parts:
   charm:
-    build-packages:
-    - "git"
-    # rustc and cargo required to build pydantic
-    - rustc
-    - cargo
-    charm-binary-python-packages:
-      # Install PyYAML from binary and avoid building it from sources. This way, we can use PyYAML with C-optimized lib.
-      # With the C-optimized lib, serialization in ops is 20x faster.
-      - PyYAML
-      - cryptography
+    source: .
+    plugin: uv
+    build-packages: [git]
+    build-snaps: [astral-uv]
+    override-build: |
+      craftctl default
+      git describe --always > $CRAFT_PART_INSTALL/version
   nrpe-exporter:
     plugin: dump
     source: .
@@ -53,3 +53,64 @@ parts:
 
       VECTOR_URI="https://packages.timber.io/vector/${VERSION}/vector-${VERSION}-${ARCH}.tar.gz"
       curl -sSfL ${VECTOR_URI} | tar xzf - -C . --strip-components=3 ./vector-${ARCH}/bin/vector
+
+provides:
+  downstream-grafana-dashboard:
+    interface: grafana_dashboard
+    optional: true
+    description: |
+      Send the gathered Grafana dashboard (and its own) to a charmed Grafana.
+  downstream-prometheus-scrape:
+    interface: prometheus_scrape
+    optional: true
+  filebeat:
+    interface: elastic-beats
+    optional: true
+  cos-agent:
+    interface: cos_agent
+    optional: true
+    description: |
+      Integration to have the workload's telemetry scraped, also forwarding
+      alerts and dashboards to the related COS agent.
+
+requires:
+  dashboards:
+    interface: grafana-dashboard
+    optional: true
+    description: Receive Grafana dashboards from other charms.
+  downstream-logging:
+    interface: loki_push_api
+    optional: true
+  general-info:
+    interface: general-info
+    optional: true
+  monitors:
+    interface: monitors
+    optional: true
+  prometheus:
+    interface: prometheus-manual
+    optional: true
+  prometheus-rules:
+    interface: prometheus-rules
+    optional: true
+  prometheus-target:
+    interface: http
+    optional: true
+
+config:
+  options:
+    forward_alert_rules:
+      description: >
+        Toggle forwarding of alert rules.
+      type: boolean
+      default: true
+    nrpe_alert_on_warning:
+      description: |
+        Enable alerting on NRPE warnings 
+
+        When true, the expression changes from `round(avg_over_time(command_status) > 1` to `round(avg_over_time(command_status) >= 1` and alerts will still be labelled as `severity: warning`.
+        From the NRPE severity calculation, `1` means warning and `2` means critical.
+
+        Warning: some users may have dynamic alerting (e.g. in PagerDuty) and these would warnings could flood notifications.
+      type: boolean
+      default: false
