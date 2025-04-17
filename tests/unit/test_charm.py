@@ -173,7 +173,8 @@ class COSProxyCharmTest(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
-    def test_scrape_target_relation_without_downstream_prometheus_blocks(self):
+    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
+    def test_scrape_target_relation_without_downstream_prometheus_blocks(self, mock_handle_prometheus_alert_rule_files):
         self.harness.set_leader(True)
 
         rel_id = self.harness.add_relation("prometheus-target", "target-app")
@@ -273,7 +274,8 @@ class COSProxyCharmTest(unittest.TestCase):
         scrape_jobs = json.loads(prometheus_rel_data.get("scrape_jobs", "[]"))
         self.assertEqual(scrape_jobs, [EXPECTED_VECTOR_SCRAPE])
 
-    def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(self):
+    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
+    def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(self, mock_handle_prometheus_alert_rule_files):
         self.harness.set_leader(True)
 
         target_rel_id = self.harness.add_relation("prometheus-target", "target-app")
@@ -493,7 +495,8 @@ class COSProxyCharmTest(unittest.TestCase):
         ]
         self.assertListEqual(groups, expected_groups)
 
-    def test_multiple_scrape_jobs_are_forwarded(self):
+    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
+    def test_multiple_scrape_jobs_are_forwarded(self, mock_handle_prometheus_alert_rule_files):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
@@ -684,7 +687,8 @@ class COSProxyCharmTest(unittest.TestCase):
         ]
         self.assertListEqual(groups, expected_groups)
 
-    def test_scrape_job_removal_differentiates_between_applications(self):
+    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
+    def test_scrape_job_removal_differentiates_between_applications(self, mock_handle_prometheus_alert_rule_files):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
@@ -847,7 +851,8 @@ class COSProxyCharmTest(unittest.TestCase):
 
         self.assertListEqual(groups, expected_groups)
 
-    def test_removing_scrape_jobs_differentiates_between_units(self):
+    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
+    def test_removing_scrape_jobs_differentiates_between_units(self, mock_handle_prometheus_alert_rule_files):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
@@ -1013,7 +1018,8 @@ class COSProxyCharmTest(unittest.TestCase):
 
         self.assertListEqual(groups, expected_groups)
 
-    def test_dashboard_are_forwarded(self):
+    @patch.object(COSProxyCharm, "_create_dashboard_files")
+    def test_dashboard_are_forwarded(self, mock_create_dashboard_files):
         self.harness.set_leader(True)
 
         grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "cos-grafana")
@@ -1029,7 +1035,8 @@ class COSProxyCharmTest(unittest.TestCase):
         dashboards = json.loads(grafana_rel_data.get("dashboards", "{}"))
         self.assertEqual(len(dashboards["templates"]), 1)
 
-    def test_multiple_dashboards_are_forwarded(self):
+    @patch.object(COSProxyCharm, "_create_dashboard_files")
+    def test_multiple_dashboards_are_forwarded(self, mock_create_dashboard_files):
         self.harness.set_leader(True)
 
         grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "cos-grafana")
@@ -1053,7 +1060,8 @@ class COSProxyCharmTest(unittest.TestCase):
         dashboards = json.loads(grafana_rel_data.get("dashboards", "{}"))
         self.assertEqual(len(dashboards["templates"]), 2)
 
-    def test_dashboards_are_converted(self):
+    @patch.object(COSProxyCharm, "_create_dashboard_files")
+    def test_dashboards_are_converted(self, mock_create_dashboard_files):
         self.harness.set_leader(True)
 
         grafana_rel_id = self.harness.add_relation("downstream-grafana-dashboard", "cos-grafana")
