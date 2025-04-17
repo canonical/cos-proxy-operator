@@ -174,7 +174,9 @@ class COSProxyCharmTest(unittest.TestCase):
         self.harness.begin()
 
     @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_scrape_target_relation_without_downstream_prometheus_blocks(self, mock_handle_prometheus_alert_rule_files):
+    def test_scrape_target_relation_without_downstream_prometheus_blocks(
+        self, mock_handle_prometheus_alert_rule_files
+    ):
         self.harness.set_leader(True)
 
         rel_id = self.harness.add_relation("prometheus-target", "target-app")
@@ -275,7 +277,9 @@ class COSProxyCharmTest(unittest.TestCase):
         self.assertEqual(scrape_jobs, [EXPECTED_VECTOR_SCRAPE])
 
     @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(self, mock_handle_prometheus_alert_rule_files):
+    def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(
+        self, mock_handle_prometheus_alert_rule_files
+    ):
         self.harness.set_leader(True)
 
         target_rel_id = self.harness.add_relation("prometheus-target", "target-app")
@@ -688,7 +692,9 @@ class COSProxyCharmTest(unittest.TestCase):
         self.assertListEqual(groups, expected_groups)
 
     @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_scrape_job_removal_differentiates_between_applications(self, mock_handle_prometheus_alert_rule_files):
+    def test_scrape_job_removal_differentiates_between_applications(
+        self, mock_handle_prometheus_alert_rule_files
+    ):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
@@ -852,7 +858,9 @@ class COSProxyCharmTest(unittest.TestCase):
         self.assertListEqual(groups, expected_groups)
 
     @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_removing_scrape_jobs_differentiates_between_units(self, mock_handle_prometheus_alert_rule_files):
+    def test_removing_scrape_jobs_differentiates_between_units(
+        self, mock_handle_prometheus_alert_rule_files
+    ):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
