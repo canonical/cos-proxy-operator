@@ -4,25 +4,23 @@
 [![Release](https://github.com/canonical/cos-proxy-operator/actions/workflows/release.yaml/badge.svg)](https://github.com/canonical/cos-proxy-operator/actions/workflows/release.yaml)
 [![Discourse Status](https://img.shields.io/discourse/status?server=https%3A%2F%2Fdiscourse.charmhub.io&style=flat&label=CharmHub%20Discourse)](https://discourse.charmhub.io)
 
-
-This Juju machine charm that provides a single integration point in the machine world
-with the Kubernetes-based [COS bundle](https://charmhub.io/cos-lite).
+COS Proxy is an integrator charm, bridging the gap between the legacy observability
+interfaces of the LMA stack with the Canonical Observability Stack. 
 
 This charm is designed to be easy to integrate in bundles and Juju-driven appliances,
 and reduce the amount of setup needed to integrate with the Kubernetes-based COS to
 just connect the COS Proxy charm with it.
 
-Proxying support is provided for:
+Proxying support is provided for the interfaces:
 
-* Prometheus
-* Grafana Dashboards
-* NRPE (through [nrpe_exporter](https://github.com/canonical/nrpe_exporter), which sends
-  NRPE results to Prometheus)
+* `prometheus`
+* `grafana-dashboard`
+* [`nrpe_exporter`](https://github.com/canonical/nrpe_exporter)
 
 ## Deployment
 
 The cos-proxy charm is used as a connector between a Juju model hosting
-applications on machines, and COS charms running within Kubernetes.
+lma-enabled applications on machines, and COS charms running within Kubernetes.
 In the following example our machine charms will be running on an OpenStack
 cloud, and the Kubernetes is Microk8s running on a separate host.  There must be
 network connectivity from each of the endpoints to the Juju controller.
