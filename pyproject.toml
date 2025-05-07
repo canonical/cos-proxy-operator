@@ -22,7 +22,7 @@ dev = [
   "ruff",
   "codespell",
   # Static
-  "pyright",
+  "pyright<1.1.399", # 1.1.399 vendors typeshed that dropped Python 3.8 support
   "responses==0.20.0",
   "httpcore==0.14.7",
   # Unit
