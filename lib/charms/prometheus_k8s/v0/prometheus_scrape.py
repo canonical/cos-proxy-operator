@@ -1882,7 +1882,9 @@ class MetricsEndpointAggregator(Object):
         # Add alert rules from file
         if self.path_to_own_alert_rules:
             alert_rules.add_path(self.path_to_own_alert_rules, recursive=True)
-        # Add generic alert rules
+        # Remove duplicated data and add generic alert rules
+        identifier = self.topology.identifier.replace("-", "_")
+        groups = [g for g in groups if not g["name"].startswith(identifier)]
         alert_rules.add(
             copy.deepcopy(generic_alert_groups.application_rules),
             group_name_prefix=self.topology.identifier,
