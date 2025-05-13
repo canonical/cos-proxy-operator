@@ -12,7 +12,11 @@ links:
   documentation: https://discourse.charmhub.io/t/cos-proxy-operator-docs-index/5611
 
 platforms:
-  ubuntu@24.04:amd64:
+  ubuntu@20.04:amd64:
+  ubuntu@22.04:amd64:
+
+assumes:
+  - juju >= 3.6
 
 parts:
   charm:
