@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import scenario
 
 from charm import COSProxyCharm
+from lib.charms.prometheus_k8s.v0.prometheus_scrape import _dedupe_list
 
 RELABEL_INSTANCE_CONFIG = {
     "source_labels": [
@@ -144,11 +145,7 @@ def test_deduplicated_alert_rules():
     groups = json.loads(prometheus_scrape.local_app_data["alert_rules"])["groups"]
 
     # AND there are no duplicate alert rule groups
-    seen_groups = []
-    for group in groups:
-        if group in seen_groups:
-            raise AssertionError(f"Duplicate group found: {group['name']}")
-        seen_groups.append(group)
+    assert groups == _dedupe_list(groups)
 
 
 @patch.object(COSProxyCharm, "_modify_enrichment_file", lambda *a, **kw: None)
@@ -193,8 +190,4 @@ def test_deduplicated_scrape_jobs():
     scrape_jobs = json.loads(prometheus_scrape.local_app_data["scrape_jobs"])
 
     # AND there are no duplicate scrape jobs
-    seen_jobs = []
-    for job in scrape_jobs:
-        if job in seen_jobs:
-            raise AssertionError(f"Duplicate scrape job found: {job['job_name']}")
-        seen_jobs.append(job)
+    assert scrape_jobs == _dedupe_list(scrape_jobs)
