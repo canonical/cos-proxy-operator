@@ -160,6 +160,30 @@ EXPECTED_VECTOR_SCRAPE = {
     ],
 }
 
+BUNDLED_RULES = [
+    {
+        "name": "testmodel_ae3c0b14_cos_proxy_vector_restarted_alerts",
+        "rules": [
+            {
+                "alert": "VectorRestarted",
+                "expr": "vector_uptime_seconds < (vector_uptime_seconds offset 5m)",
+                "for": "0m",
+                "labels": {
+                    "severity": "info",
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                    "juju_application": "cos-proxy",
+                    "juju_charm": "cos-proxy",
+                },
+                "annotations": {
+                    "summary": "Vector restarted (instance {{ $labels.instance }})",
+                    "description": "Vector has just been restarted, less than one minute ago on {{ $labels.instance }}. Telemetry loss may have occurred.\nVALUE = {{ $value }}\nLABELS = {{ $labels }}\n",
+                },
+            }
+        ],
+    }
+]
+
 
 @patch.object(lzma, "compress", new=lambda x, *args, **kwargs: x)
 @patch.object(lzma, "decompress", new=lambda x, *args, **kwargs: x)
@@ -346,7 +370,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups), 3)
         expected_groups = [
             {
                 "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
@@ -410,7 +434,7 @@ class COSProxyCharmTest(unittest.TestCase):
             },
         ]
 
-        self.assertListEqual(groups, expected_groups)
+        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
 
     def test_alert_rules_are_forwarded_on_adding_targets_then_prometheus(self):
         self.harness.set_leader(True)
@@ -434,7 +458,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups), 3)
         expected_groups = [
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
@@ -497,7 +521,7 @@ class COSProxyCharmTest(unittest.TestCase):
                 ],
             },
         ]
-        self.assertListEqual(groups, expected_groups)
+        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
 
     @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
     def test_multiple_scrape_jobs_are_forwarded(self, mock_handle_prometheus_alert_rule_files):
@@ -605,7 +629,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 3)  # HostHealth added automatically
+        self.assertEqual(len(groups), 4)  # HostHealth added automatically
         expected_groups = [
             {
                 "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
@@ -689,7 +713,7 @@ class COSProxyCharmTest(unittest.TestCase):
                 ],
             },
         ]
-        self.assertListEqual(groups, expected_groups)
+        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
 
     @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
     def test_scrape_job_removal_differentiates_between_applications(
@@ -785,12 +809,12 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 3)
+        self.assertEqual(len(groups), 4)
 
         self.harness.remove_relation_unit(alert_rules_rel_id_2, "rules-app-2/0")
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups), 3)
 
         expected_groups = [
             {
@@ -855,7 +879,7 @@ class COSProxyCharmTest(unittest.TestCase):
             },
         ]
 
-        self.assertListEqual(groups, expected_groups)
+        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
 
     @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
     def test_removing_scrape_jobs_differentiates_between_units(
@@ -953,13 +977,13 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups), 3)
 
         self.harness.remove_relation_unit(alert_rules_rel_id, "rules-app/1")
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 2)
+        self.assertEqual(len(groups), 3)
 
         expected_groups = [
             {
@@ -1024,7 +1048,7 @@ class COSProxyCharmTest(unittest.TestCase):
             },
         ]
 
-        self.assertListEqual(groups, expected_groups)
+        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
 
     @patch.object(COSProxyCharm, "_create_dashboard_files")
     def test_dashboard_are_forwarded(self, mock_create_dashboard_files):

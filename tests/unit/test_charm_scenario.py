@@ -1,4 +1,5 @@
 import json
+from unittest.mock import MagicMock, patch
 
 import scenario
 
@@ -17,7 +18,8 @@ RELABEL_INSTANCE_CONFIG = {
 }
 
 
-def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets():
+@patch("builtins.open", new_callable=MagicMock)
+def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets(mock_open):
     # Arrange
     prometheus_scrape_relation = scenario.Relation(
         "downstream-prometheus-scrape",
@@ -75,3 +77,124 @@ def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets():
     # Assert
     actual_jobs = json.loads(relation.local_app_data.get("scrape_jobs", "[]"))
     assert actual_jobs == expected_jobs
+
+
+@patch.object(COSProxyCharm, "_modify_enrichment_file", lambda *a, **kw: None)
+def test_deduplicated_alert_rules():
+    # GIVEN Cos-proxy is receiving alert rules from multiple sources:
+    # Dynamic-rules, prometheus-rules, generic-rules, src/prometheus_alert_rules
+    ctx = scenario.Context(COSProxyCharm)
+    monitors = scenario.Relation(
+        endpoint="monitors",
+        remote_units_data={
+            0: {
+                "monitors": """{
+                "monitors": {
+                    "remote": {
+                        "nrpe": {
+                            "check_conntrack": "check_conntrack",
+                            "check_systemd_scopes": "check_systemd_scopes",
+                            "check_reboot": "check_reboot"
+                        }
+                    }
+                },
+                "version": "0.3"
+            }"""
+            }
+        },
+    )
+    prometheus_rules = scenario.Relation(
+        endpoint="prometheus-rules",
+        remote_units_data={
+            0: {
+                "groups": "- alert: RabbitMQ_split_brain\n"
+                "  expr: count(count(rabbitmq_queues) by (job)) > 1\n"
+                "  for: 5m\n"
+                "  labels:\n"
+                "    severity: page\n"
+                "    application: rabbitmq-server"
+            }
+        },
+    )
+    prometheus_scrape = scenario.Relation(
+        "downstream-prometheus-scrape",
+        remote_app_name="cos-prometheus",
+        remote_units_data={
+            0: {},
+        },
+    )
+    state_in = scenario.State(
+        leader=True, relations=[monitors, prometheus_scrape, prometheus_rules]
+    )
+
+    # WHEN multiple config-changed events trigger the charm
+    state_out = ctx.run(ctx.on.config_changed(), state=state_in)
+    state_out = ctx.run(ctx.on.config_changed(), state=state_out)
+
+    # THEN these alerts are forwarded to the downstream Prometheus
+    prometheus_scrape = next(
+        (
+            relation
+            for relation in state_out.relations
+            if relation.endpoint == "downstream-prometheus-scrape"
+        ),
+        None,
+    )
+    assert prometheus_scrape
+    groups = json.loads(prometheus_scrape.local_app_data["alert_rules"])["groups"]
+
+    # AND there are no duplicate alert rule groups
+    seen_groups = []
+    for group in groups:
+        if group in seen_groups:
+            raise AssertionError(f"Duplicate group found: {group['name']}")
+        seen_groups.append(group)
+
+
+@patch.object(COSProxyCharm, "_modify_enrichment_file", lambda *a, **kw: None)
+def test_deduplicated_scrape_jobs():
+    # GIVEN Cos-proxy is receiving scrape jobs
+    ctx = scenario.Context(COSProxyCharm)
+    prometheus_target_relation = scenario.Relation(
+        "prometheus-target",
+        remote_app_name="target-app",
+        remote_units_data={
+            0: {
+                "hostname": "scrape_target_0",
+                "port": "1234",
+            },
+        },
+    )
+    prometheus_scrape = scenario.Relation(
+        "downstream-prometheus-scrape",
+        remote_app_name="cos-prometheus",
+        remote_units_data={
+            0: {},
+        },
+    )
+    state_in = scenario.State(
+        leader=True, relations=[prometheus_target_relation, prometheus_scrape]
+    )
+
+    # WHEN multiple config-changed events trigger the charm
+    state_out = ctx.run(ctx.on.config_changed(), state=state_in)
+    state_out = ctx.run(ctx.on.config_changed(), state=state_out)
+
+    # THEN these scrape jobs are forwarded to the downstream Prometheus
+    prometheus_scrape = next(
+        (
+            relation
+            for relation in state_out.relations
+            if relation.endpoint == "downstream-prometheus-scrape"
+        ),
+        None,
+    )
+    assert prometheus_scrape
+    scrape_jobs = json.loads(prometheus_scrape.local_app_data["scrape_jobs"])
+
+    # AND there are no duplicate scrape jobs
+    seen_jobs = []
+    for job in scrape_jobs:
+        if job in seen_jobs:
+            raise AssertionError(f"Duplicate scrape job found: {job['job_name']}")
+        seen_jobs.append(job)
