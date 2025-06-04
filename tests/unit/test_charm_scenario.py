@@ -145,6 +145,7 @@ def test_deduplicated_alert_rules():
     groups = json.loads(prometheus_scrape.local_app_data["alert_rules"])["groups"]
 
     # AND there are no duplicate alert rule groups
+    # Note: using lib.charms.prometheus_k8s.v0.prometheus_scrape._dedupe_list
     assert groups == _dedupe_list(groups)
 
 
@@ -190,4 +191,5 @@ def test_deduplicated_scrape_jobs():
     scrape_jobs = json.loads(prometheus_scrape.local_app_data["scrape_jobs"])
 
     # AND there are no duplicate scrape jobs
+    # Note: using lib.charms.prometheus_k8s.v0.prometheus_scrape._dedupe_list
     assert scrape_jobs == _dedupe_list(scrape_jobs)
