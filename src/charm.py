@@ -168,6 +168,7 @@ class COSProxyCharm(CharmBase):
             self,
             resolve_addresses=True,
             forward_alert_rules=cast(bool, self.config["forward_alert_rules"]),
+            path_to_own_alert_rules="./src/prometheus_alert_rules",
         )
         self.cos_agent = COSAgentProvider(
             self,
@@ -322,7 +323,7 @@ class COSProxyCharm(CharmBase):
         if stored_jobs:
             for job_data in stored_jobs:
                 stored_jobs_model = ScrapeJobModel(**job_data)  # pyright: ignore
-                jobs.append(stored_jobs_model.dict())
+                jobs.append(stored_jobs_model.model_dump())
 
         for relation in self.model.relations[self.metrics_aggregator._target_relation]:
             targets = self.metrics_aggregator._get_targets(relation)
@@ -331,7 +332,7 @@ class COSProxyCharm(CharmBase):
                     targets, relation.app.name
                 )
                 target_job = ScrapeJobModel(**target_job_data)
-                jobs.append(target_job.dict())
+                jobs.append(target_job.model_dump())
         return jobs
 
     def _get_alert_groups(self) -> AlertRulesModel:
@@ -362,7 +363,7 @@ class COSProxyCharm(CharmBase):
         alert_rules_file_path = directory / f"{app_name}-rules.yaml"
 
         with open(alert_rules_file_path, "w") as alert_rules_file:
-            yaml.dump(groups.dict(), alert_rules_file, default_flow_style=False)
+            yaml.dump(groups.model_dump(), alert_rules_file, default_flow_style=False)
 
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
