@@ -1,3 +1,4 @@
+.idea/
 venv/
 build/
 *.charm
@@ -5,3 +6,5 @@ build/
 .coverage
 __pycache__/
 *.py[cod]
+
+nrpe_exporter-*
