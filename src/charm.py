@@ -64,7 +64,6 @@ from interfaces.prometheus_scrape.v0.schema import (
     AlertGroupModel,
     AlertRulesModel,
     ScrapeJobModel,
-    ScrapeStaticConfigModel,
 )
 from ops import RelationBrokenEvent, RelationChangedEvent
 from ops.charm import CharmBase, RelationJoinedEvent
@@ -662,53 +661,8 @@ class COSProxyCharm(CharmBase):
     def _downstream_prometheus_scrape_relation_broken(self, _):
         self._stored.have_prometheus = False
 
-    def _nrpes_to_scrape_jobs(self, nrpes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Convert nrpe endpoints into scrape jobs.
-
-        The intention of this method is to mimic the behavior of the scrape jobs creation in the
-        MetricsEndpointAggregator on prometheus relations.
-
-        There are some assumptions made:
-            1. nrpe["target"] will only have one key-value pair, otherwise we ignore the rest
-                - This could be an issue when nrpe has multiple units
-            2. The "dns_name" for an nrpe endpoint set in the "static_configs"
-        """
-        jobs = []
-        for nrpe in nrpes:
-            nrpe_targets = [f"{t['hostname']}:{t['port']}" for t in nrpe["target"].values()]
-            if len(nrpe_targets) > 1:
-                logger.warning(
-                    f"There are multiple nrpe targets ({nrpe['target']}), so the scrape job "
-                    "will be built from the context of only the first target."
-                )
-            host = nrpe_targets[0].split(":")[0]
-            labels = {
-                "juju_model": self.model.name,
-                "juju_model_uuid": self.model.uuid,
-                "juju_application": nrpe["app_name"],
-                "juju_unit": list(set(nrpe["target"].keys()))[0],
-                "host": host,
-                "dns_name": host,
-            }
-            static_cfgs = [ScrapeStaticConfigModel(**{"targets": nrpe_targets, "labels": labels})]
-            additional = nrpe["additional_fields"]
-            relabel_configs = self._scrape_config.relabel_configs()
-            relabel_configs.extend(additional["relabel_configs"])
-            extra = {
-                "relabel_configs": relabel_configs,
-                "params": additional["updates"]["params"],
-            }
-            job = ScrapeJobModel(
-                job_name=additional["updates"]["job_name"],
-                metrics_path=additional["updates"]["metrics_path"],
-                static_configs=static_cfgs,
-                **extra,
-            )
-            jobs.append(job.model_dump(exclude_unset=True))
-
-        return jobs
-
-    def _cos_agent_scrape_jobs_to_databag(self, scrape_jobs: List[Dict[str, Any]]):
+    def _set_cos_agent_job_data(self, scrape_jobs: List[Dict[str, Any]]):
+        """Update the metrics scrape jobs in cos-agent relations."""
         data_key = CosAgentProviderUnitData.KEY
         for relation in self.model.relations[COS_AGENT_DEFAULT_RELATION_NAME]:
             if data_key not in relation.data[self.unit]:
@@ -751,9 +705,14 @@ class COSProxyCharm(CharmBase):
         self.metrics_aggregator.set_target_job_data(vector_target, self.app.name)
 
         # Add scrape jobs for cos-agent relations
-        cos_agent_jobs = self._nrpes_to_scrape_jobs(nrpes)
+        cos_agent_jobs = [
+            self._scrape_config.from_targets(
+                nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
+            )
+            for nrpe in nrpes
+        ]
         cos_agent_jobs.append(self._scrape_config.from_targets(vector_target, self.app.name))
-        self._cos_agent_scrape_jobs_to_databag(cos_agent_jobs)
+        self._set_cos_agent_job_data(cos_agent_jobs)
 
         for alert in current_alerts:
             self.metrics_aggregator.set_alert_rule_data(

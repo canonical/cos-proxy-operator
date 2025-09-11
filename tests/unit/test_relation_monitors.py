@@ -162,6 +162,3 @@ class TestRelationMonitors(unittest.TestCase):
         cos_agent_scrape_jobs = json.loads(app_data_agent["config"])["metrics_scrape_jobs"]
         prom_scrape_jobs = json.loads(app_data_prom["scrape_jobs"])
         self.assertEqual(prom_scrape_jobs, cos_agent_scrape_jobs)
-        # TODO: _on_refresh sets CosAgentProviderUnitData. Does this undo what we do in CP code?
-        # TODO: Would nrpe_targets_changed fire after refresh? If so we are okay
-        # TODO: Test with multiple nrpe units
