@@ -13,7 +13,7 @@ of relations which will be checked for `monitor` data to configure
 Prometheus jobs.
 
 The parent charm should also provide an instantiated
-`MetricsEndpointAggregator`, so events sent from this library can be
+`MetricsEndpointAggregator`, so events sent from this object can be
 consumed and sent through the Prometheus relation, by responding to
 `NrpeTargetsChangedEvent`.
 
