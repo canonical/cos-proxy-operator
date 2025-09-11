@@ -689,8 +689,6 @@ class COSAgentProvider(Object):
                 ) as e:
                     logger.error("Invalid relation data provided: %s", e)
 
-    # TODO: _on_refresh sets CosAgentProviderUnitData. Does this undo what we do in CP code?
-    # TODO: Would nrpe_targets_changed fire after refresh? If so we are okay
     @property
     def _scrape_jobs(self) -> List[Dict]:
         """Return a prometheus_scrape-like data structure for jobs.

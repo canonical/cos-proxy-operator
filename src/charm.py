@@ -47,7 +47,7 @@ import yaml
 from charms.grafana_agent.v0.cos_agent import (
     DEFAULT_RELATION_NAME as COS_AGENT_DEFAULT_RELATION_NAME,
 )
-from charms.grafana_agent.v0.cos_agent import COSAgentProvider
+from charms.grafana_agent.v0.cos_agent import COSAgentProvider, CosAgentProviderUnitData
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.operator_libs_linux.v0.apt import remove_package
 from charms.operator_libs_linux.v1.systemd import (
@@ -60,7 +60,12 @@ from charms.operator_libs_linux.v1.systemd import (
 from charms.prometheus_k8s.v0.prometheus_scrape import _type_convert_stored
 from cosl import JujuTopology, MandatoryRelationPairs
 from cosl.rules import AlertRules, generic_alert_groups
-from interfaces.prometheus_scrape.v0.schema import AlertGroupModel, AlertRulesModel, ScrapeJobModel
+from interfaces.prometheus_scrape.v0.schema import (
+    AlertGroupModel,
+    AlertRulesModel,
+    ScrapeJobModel,
+    ScrapeStaticConfigModel,
+)
 from ops import RelationBrokenEvent, RelationChangedEvent
 from ops.charm import CharmBase, RelationJoinedEvent
 from ops.framework import Object, StoredState
@@ -176,8 +181,8 @@ class COSProxyCharm(CharmBase):
         )
 
         self._scrape_config = ScrapeConfig(
-            self.model.uuid, self.model.name
-        )  # TODO: Make sure the defaults are the same as OG CP code
+            self.model.name, self.model.uuid, resolve_addresses=True
+        )
         self.metrics_aggregator = MetricsEndpointAggregator(
             self,
             resolve_addresses=True,
@@ -342,9 +347,7 @@ class COSProxyCharm(CharmBase):
         for relation in self.model.relations[self.metrics_aggregator._target_relation]:
             targets = self.metrics_aggregator._get_targets(relation)
             if targets and relation.app:
-                target_job_data = self._scrape_config.from_targets(
-                    targets, relation.app.name, "prometheus_scrape"
-                )
+                target_job_data = self._scrape_config.from_targets(targets, relation.app.name)
                 target_job = ScrapeJobModel(**target_job_data)
                 jobs.append(target_job.model_dump())
         return jobs
@@ -659,6 +662,63 @@ class COSProxyCharm(CharmBase):
     def _downstream_prometheus_scrape_relation_broken(self, _):
         self._stored.have_prometheus = False
 
+    def _nrpes_to_scrape_jobs(self, nrpes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert nrpe endpoints into scrape jobs.
+
+        The intention of this method is to mimic the behavior of the scrape jobs creation in the
+        MetricsEndpointAggregator on prometheus relations.
+
+        There are some assumptions made:
+            1. nrpe["target"] will only have one key-value pair, otherwise we ignore the rest
+                - This could be an issue when nrpe has multiple units
+            2. The "dns_name" for an nrpe endpoint set in the "static_configs"
+        """
+        jobs = []
+        for nrpe in nrpes:
+            nrpe_targets = [f"{t['hostname']}:{t['port']}" for t in nrpe["target"].values()]
+            if len(nrpe_targets) > 1:
+                logger.warning(
+                    f"There are multiple nrpe targets ({nrpe['target']}), so the scrape job "
+                    "will be built from the context of only the first target."
+                )
+            host = nrpe_targets[0].split(":")[0]
+            labels = {
+                "juju_model": self.model.name,
+                "juju_model_uuid": self.model.uuid,
+                "juju_application": nrpe["app_name"],
+                "juju_unit": list(set(nrpe["target"].keys()))[0],
+                "host": host,
+                "dns_name": host,
+            }
+            static_cfgs = [ScrapeStaticConfigModel(**{"targets": nrpe_targets, "labels": labels})]
+            additional = nrpe["additional_fields"]
+            relabel_configs = self._scrape_config.relabel_configs()
+            relabel_configs.extend(additional["relabel_configs"])
+            extra = {
+                "relabel_configs": relabel_configs,
+                "params": additional["updates"]["params"],
+            }
+            job = ScrapeJobModel(
+                job_name=additional["updates"]["job_name"],
+                metrics_path=additional["updates"]["metrics_path"],
+                static_configs=static_cfgs,
+                **extra,
+            )
+            jobs.append(job.model_dump(exclude_unset=True))
+
+        return jobs
+
+    def _cos_agent_scrape_jobs_to_databag(self, scrape_jobs: List[Dict[str, Any]]):
+        data_key = CosAgentProviderUnitData.KEY
+        for relation in self.model.relations[COS_AGENT_DEFAULT_RELATION_NAME]:
+            if data_key not in relation.data[self.unit]:
+                continue
+            data = json.loads(relation.data[self.unit][data_key])
+            data.setdefault("metrics_scrape_jobs", [])
+            jobs = _dedupe_list(scrape_jobs)
+            data["metrics_scrape_jobs"] = jobs
+            relation.data[self.unit][data_key] = CosAgentProviderUnitData(**data).json()
+
     def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
         """Send NRPE jobs over to MetricsEndpointAggregator."""
         if event and isinstance(event, NrpeTargetsChangedEvent):
@@ -691,24 +751,9 @@ class COSProxyCharm(CharmBase):
         self.metrics_aggregator.set_target_job_data(vector_target, self.app.name)
 
         # Add scrape jobs for cos-agent relations
-        cos_agent_jobs = []
-        nrpe_targets = [nrpe["target"] for nrpe in nrpes]
-        for nrpe_target in nrpe_targets:
-            # TODO: The job_name is named prometheus_scrape which needs to be updated to cos_agent, hardcoded in MetricsEndpointAggregator._job_name
-            # TODO: Should this be called from_target or from_targets? Depends on unit_name key in target arg
-            nrpe_target_job_data = self._scrape_config.from_targets(
-                nrpe_target, self.app.name, "cos_agent"
-            )
-            cos_agent_jobs.append(nrpe_target_job_data)
-            logger.warning(f"+++NRPE-JOBS: {nrpe_target_job_data}")
-        vector_target_job_data = self._scrape_config.from_targets(
-            vector_target, self.app.name, "cos_agent"
-        )
-        cos_agent_jobs.append(vector_target_job_data)
-        logger.warning(f"+++VECTOR-JOBS: {vector_target_job_data}")
-        # TODO: Send scrape-jobs in unit data
-        for relation in self.model.relations[COS_AGENT_DEFAULT_RELATION_NAME]:
-            relation.data[self.app]["metrics_scrape_jobs"] = json.dumps(cos_agent_jobs)
+        cos_agent_jobs = self._nrpes_to_scrape_jobs(nrpes)
+        cos_agent_jobs.append(self._scrape_config.from_targets(vector_target, self.app.name))
+        self._cos_agent_scrape_jobs_to_databag(cos_agent_jobs)
 
         for alert in current_alerts:
             self.metrics_aggregator.set_alert_rule_data(
@@ -789,7 +834,7 @@ class ScrapeConfig:
         self._relabel_instance = relabel_instance
         self._resolve_addresses = resolve_addresses
 
-    def job_name(self, appname: str, job_suffix: str) -> str:
+    def job_name(self, appname: str) -> str:
         """Construct a scrape job name.
 
         Each relation has its own unique scrape job name. All units in
@@ -797,14 +842,13 @@ class ScrapeConfig:
 
         Args:
             appname: string name of a related application.
-            job_suffix: string name of the relation type to use as a suffix in the job name.
 
         Returns:
             a string Prometheus scrape job name for the application.
         """
-        return f"juju_{self._model_name}_{self._model_uuid[:7]}_{appname}_{job_suffix}"
+        return f"juju_{self._model_name}_{self._model_uuid[:7]}_{appname}_prometheus_scrape"
 
-    def from_targets(self, targets, application_name: str, job_suffix: str, **kwargs) -> dict:
+    def from_targets(self, targets, application_name: str, **kwargs) -> dict:
         """Construct a static scrape job for an application from targets.
 
         Args:
@@ -813,7 +857,6 @@ class ScrapeConfig:
                 a dictionary with keys "hostname" and "port".
             application_name: a string name of the application for which this static scrape job is
                 being constructed.
-            job_suffix: string name of the relation type to use as a suffix in the job name.
             kwargs: a `dict` of the extra arguments passed to the function
 
         Returns:
@@ -822,7 +865,7 @@ class ScrapeConfig:
             list of any existing list of Prometheus static configs.
         """
         job = {
-            "job_name": self.job_name(application_name, job_suffix),
+            "job_name": self.job_name(application_name),
             "static_configs": [
                 {
                     "targets": ["{}:{}".format(target["hostname"], target["port"])],
@@ -839,7 +882,7 @@ class ScrapeConfig:
                 }
                 for unit_name, target in targets.items()
             ],
-            "relabel_configs": self._relabel_configs + kwargs.get("relabel_configs", []),
+            "relabel_configs": self.relabel_configs() + kwargs.get("relabel_configs", []),
         }
         job.update(kwargs.get("updates", {}))
 
@@ -859,8 +902,7 @@ class ScrapeConfig:
 
         return extra_info
 
-    @property
-    def _relabel_configs(self) -> list:
+    def relabel_configs(self) -> List[Dict[str, Any]]:
         """Create Juju topology relabeling configuration.
 
         Using Juju topology for instance labels ensures that these
@@ -1004,7 +1046,6 @@ class MetricsEndpointAggregator(Object):
             forward_alert_rules: a boolean flag to toggle forwarding of charmed alert rules
         """
         self._charm = charm
-        # TODO: Make sure to copy over the prom_scrape to the prom repo and PR it, making sure all tests pass and no TODOs in there
         self._scrape_config = ScrapeConfig(
             self._charm.model.name, self._charm.model.uuid, relabel_instance, resolve_addresses
         )
@@ -1058,11 +1099,7 @@ class MetricsEndpointAggregator(Object):
         for relation in self.model.relations[self._target_relation]:
             targets = self._get_targets(relation)
             if targets and relation.app:
-                jobs.append(
-                    self._scrape_config.from_targets(
-                        targets, relation.app.name, "prometheus_scrape"
-                    )
-                )
+                jobs.append(self._scrape_config.from_targets(targets, relation.app.name))
 
         # Gather the alert rules
         groups = [] + _type_convert_stored(
@@ -1128,9 +1165,7 @@ class MetricsEndpointAggregator(Object):
             return
 
         # new scrape job for the relation that has changed
-        updated_job = self._scrape_config.from_targets(
-            targets, app_name, "prometheus_scrape", **kwargs
-        )
+        updated_job = self._scrape_config.from_targets(targets, app_name, **kwargs)
 
         for relation in self.model.relations[self._prometheus_relation]:
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
@@ -1148,7 +1183,7 @@ class MetricsEndpointAggregator(Object):
         Any time a scrape target departs, any Prometheus scrape job
         associated with that specific scrape target is removed.
         """
-        job_name = self._scrape_config.job_name(event.relation.app.name, "prometheus_scrape")
+        job_name = self._scrape_config.job_name(event.relation.app.name)
         unit_name = event.unit.name
         self.remove_prometheus_jobs(job_name, unit_name)
 

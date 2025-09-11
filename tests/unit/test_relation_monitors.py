@@ -141,3 +141,27 @@ class TestRelationMonitors(unittest.TestCase):
                         self.assertEqual(config["replacement"], JUJU_APP)
                     elif target_level == "juju_unit":
                         self.assertEqual(config["replacement"], JUJU_UNIT)
+
+    def test_cos_agent(self):
+        # GIVEN cos-agent, monitors, and downstream-prometheus-scrape relations
+        rel_id_agent = self.harness.add_relation("cos-agent", "agent")
+        self.harness.add_relation_unit(rel_id_agent, "agent/0")
+        rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
+        self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
+        rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
+        self.harness.add_relation_unit(rel_id_prom, "prom/0")
+
+        self.harness.begin_with_initial_hooks()
+
+        # WHEN "monitors" relation populates its unit data
+        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_unit_data)
+
+        # THEN cos-agent scrape jobs are identical to those in prometheus relations
+        app_data_agent = self.harness.get_relation_data(rel_id_agent, "cos-proxy/0")
+        app_data_prom = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
+        cos_agent_scrape_jobs = json.loads(app_data_agent["config"])["metrics_scrape_jobs"]
+        prom_scrape_jobs = json.loads(app_data_prom["scrape_jobs"])
+        self.assertEqual(prom_scrape_jobs, cos_agent_scrape_jobs)
+        # TODO: _on_refresh sets CosAgentProviderUnitData. Does this undo what we do in CP code?
+        # TODO: Would nrpe_targets_changed fire after refresh? If so we are okay
+        # TODO: Test with multiple nrpe units
