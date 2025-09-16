@@ -145,14 +145,12 @@ class TestEndpointAggregator(unittest.TestCase):
         target_rel_id = self.harness.add_relation(SCRAPE_TARGET_RELATION, "target-app")
         self.harness.add_relation_unit(target_rel_id, "target-app/0")
 
-        hostname = "scrape_target_0"
-        port = "1234"
         self.harness.update_relation_data(
             target_rel_id,
             "target-app/0",
             {
-                "hostname": f"{hostname}",
-                "port": f"{port}",
+                "hostname": "scrape_target_0",
+                "port": "1234",
             },
         )
 

@@ -22,7 +22,7 @@ class TestRelationMonitors(unittest.TestCase):
         # The unit data below were obtained from the output of:
         # juju show-unit \
         #   cos-proxy/0 --format json | jq '."cos-proxy/0"."relation-info"[0]."related-units"."nrpe/0".data'
-        self.default_unit_data = {
+        self.default_monitors_unit_data = {
             "egress-subnets": "10.41.168.226/32",
             "ingress-address": "10.41.168.226",
             "machine_id": "1",
@@ -32,6 +32,14 @@ class TestRelationMonitors(unittest.TestCase):
             "target-address": "10.41.168.226",
             "target-id": f"{NAGIOS_HOST_CONTEXT}-{POD_NAME}",
             "nagios_host_context": NAGIOS_HOST_CONTEXT,
+        }
+
+        self.default_target_unit_data = {
+            "egress-subnets": "10.181.49.93/32",
+            "hostname": "10.181.49.93",
+            "ingress-address": "10.181.49.93",
+            "port": "9103",
+            "private-address": "10.181.49.93",
         }
 
         for p in [
@@ -49,18 +57,16 @@ class TestRelationMonitors(unittest.TestCase):
         self.harness.set_model_info(name="mymodel", uuid="fe2c9bbb-58ab-40e4-8f70-f27480093fca")
         self.harness.set_leader(True)
         self.maxDiff = None
+        self.harness.begin_with_initial_hooks()
 
     def tearDown(self):
         self.mock_enrichment_file.unlink(missing_ok=True)
 
     def test_monitors_changed(self):
-        # GIVEN a post-startup charm
-        self.harness.begin_with_initial_hooks()
-
-        # WHEN a "monitors" relation joins
+        # GIVEN a "monitors" relation joins
         rel_id = self.harness.add_relation("monitors", "nrpe")
         self.harness.add_relation_unit(rel_id, "nrpe/0")
-        self.harness.update_relation_data(rel_id, "nrpe/0", self.default_unit_data)
+        self.harness.update_relation_data(rel_id, "nrpe/0", self.default_monitors_unit_data)
 
         # THEN the csv file contains corresponding targets
         expected = "\n".join(
@@ -80,7 +86,7 @@ class TestRelationMonitors(unittest.TestCase):
             rel_id,
             "nrpe/0",
             {
-                **self.default_unit_data,
+                **self.default_monitors_unit_data,
                 **{"target-id": "context-1-ubuntu-0", "nagios_host_context": "context-1"},
             },
         )
@@ -98,13 +104,10 @@ class TestRelationMonitors(unittest.TestCase):
         self.assertEqual(expected, self.mock_enrichment_file.read_text())
 
     def test_prometheus(self):
-        # GIVEN a post-startup charm
-        self.harness.begin_with_initial_hooks()
-
-        # WHEN "monitors" and "downstream-prometheus-scrape" relations join
+        # GIVEN the "monitors" and "downstream-prometheus-scrape" relations join
         rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
         self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
-        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_unit_data)
+        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_monitors_unit_data)
 
         rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
         self.harness.add_relation_unit(rel_id_prom, "prom/0")
@@ -143,7 +146,7 @@ class TestRelationMonitors(unittest.TestCase):
                         self.assertEqual(config["replacement"], JUJU_UNIT)
 
     def test_cos_agent(self):
-        # GIVEN cos-agent, monitors, and downstream-prometheus-scrape relations
+        # GIVEN the "cos-agent", "monitors", and "downstream-prometheus-scrape" relations exist
         rel_id_agent = self.harness.add_relation("cos-agent", "agent")
         self.harness.add_relation_unit(rel_id_agent, "agent/0")
         rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
@@ -151,14 +154,46 @@ class TestRelationMonitors(unittest.TestCase):
         rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
         self.harness.add_relation_unit(rel_id_prom, "prom/0")
 
-        self.harness.begin_with_initial_hooks()
+        # WHEN the "monitors" relation populates its unit data
+        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_monitors_unit_data)
 
-        # WHEN "monitors" relation populates its unit data
-        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_unit_data)
-
-        # THEN cos-agent scrape jobs are identical to those in prometheus relations
-        app_data_agent = self.harness.get_relation_data(rel_id_agent, "cos-proxy/0")
-        app_data_prom = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
-        cos_agent_scrape_jobs = json.loads(app_data_agent["config"])["metrics_scrape_jobs"]
-        prom_scrape_jobs = json.loads(app_data_prom["scrape_jobs"])
+        # THEN "cos-agent" scrape jobs are identical to those in the "downstream-prometheus-scrape" relation
+        agent_app_data = self.harness.get_relation_data(rel_id_agent, "cos-proxy/0")
+        prom_app_data = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
+        cos_agent_scrape_jobs = json.loads(agent_app_data["config"])["metrics_scrape_jobs"]
+        prom_scrape_jobs = json.loads(prom_app_data["scrape_jobs"])
         self.assertEqual(prom_scrape_jobs, cos_agent_scrape_jobs)
+
+    def test_cos_agent_without_downstream_prometheus(self):
+        # GIVEN the "cos-agent", "monitors", and "prometheus-target" relations exist
+        rel_id_agent = self.harness.add_relation("cos-agent", "agent")
+        self.harness.add_relation_unit(rel_id_agent, "agent/0")
+        rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
+        self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
+        rel_id_target = self.harness.add_relation("prometheus-target", "telegraf")
+        self.harness.add_relation_unit(rel_id_target, "telegraf/0")
+
+        # WHEN the "monitors" relation populates its unit data
+        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_monitors_unit_data)
+        self.harness.update_relation_data(
+            rel_id_target, "telegraf/0", self.default_target_unit_data
+        )
+
+        # THEN cos-agent has scrape jobs
+        agent_app_data = self.harness.get_relation_data(rel_id_agent, "cos-proxy/0")
+        cos_agent_scrape_jobs = json.loads(agent_app_data["config"])["metrics_scrape_jobs"]
+        assert cos_agent_scrape_jobs
+
+        # AND WHEN the monitors relation is removed
+        self.harness.remove_relation(rel_id_nrpe)
+        agent_app_data = self.harness.get_relation_data(rel_id_agent, "cos-proxy/0")
+        cos_agent_scrape_jobs = json.loads(agent_app_data["config"])["metrics_scrape_jobs"]
+        applications_in_job_labels = [
+            s.get("labels", {}).get("juju_application")
+            for c in cos_agent_scrape_jobs
+            for s in c.get("static_configs", [])
+        ]
+        # THEN there are no more nrpe jobs
+        assert "nrpe" not in applications_in_job_labels
+        # AND only the prom-target and vector jobs exist
+        assert applications_in_job_labels == ["telegraf", "cos-proxy"]

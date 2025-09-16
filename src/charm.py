@@ -44,10 +44,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 import yaml
-from charms.grafana_agent.v0.cos_agent import (
-    DEFAULT_RELATION_NAME as COS_AGENT_DEFAULT_RELATION_NAME,
-)
-from charms.grafana_agent.v0.cos_agent import COSAgentProvider, CosAgentProviderUnitData
+from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.operator_libs_linux.v0.apt import remove_package
 from charms.operator_libs_linux.v1.systemd import (
@@ -188,14 +185,22 @@ class COSProxyCharm(CharmBase):
             forward_alert_rules=cast(bool, self.config["forward_alert_rules"]),
             path_to_own_alert_rules="./src/prometheus_alert_rules",
         )
+        self.nrpe_exporter = NrpeExporterProvider(self)
+        self.framework.observe(
+            self.nrpe_exporter.on.nrpe_targets_changed,  # pyright: ignore
+            self._on_nrpe_targets_changed,
+        )
         self.cos_agent = COSAgentProvider(
             self,
-            scrape_configs=self._get_scrape_configs(),
+            # NOTE: we pass a callable to scrape_configs to calculate them within the _on_refresh
+            #       method rather than in the constructor
+            scrape_configs=self._get_scrape_configs,
             metrics_rules_dir=RULES_DIR,
             dashboard_dirs=[COS_PROXY_DASHBOARDS_DIR, DASHBOARDS_DIR],
             refresh_events=[
                 self.on.prometheus_target_relation_changed,
                 self.on.prometheus_target_relation_broken,
+                self.nrpe_exporter.on.nrpe_targets_changed,
                 self.on.dashboards_relation_changed,
                 self.on.dashboards_relation_broken,
             ],
@@ -209,12 +214,6 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(
             self.on.cos_agent_relation_broken,  # pyright: ignore
             self._on_cos_agent_relation_broken,
-        )
-
-        self.nrpe_exporter = NrpeExporterProvider(self)
-        self.framework.observe(
-            self.nrpe_exporter.on.nrpe_targets_changed,  # pyright: ignore
-            self._on_nrpe_targets_changed,
         )
 
         self.vector = VectorProvider(self)
@@ -335,20 +334,17 @@ class COSProxyCharm(CharmBase):
                         json.dump(dashboard, dashboard_file, indent=4)
 
     def _get_scrape_configs(self):
-        """Return the scrape jobs."""
+        """Return the scrape jobs from stored state.
+
+        The source of truth for scrape jobs exists in self.metrics_aggregator._stored.jobs
+        and should be updated elsewhere accordingly to populate cos-agent relation data.
+        """
         jobs = []
         stored_jobs = _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore
         if stored_jobs:
             for job_data in stored_jobs:
                 stored_jobs_model = ScrapeJobModel(**job_data)  # pyright: ignore
-                jobs.append(stored_jobs_model.model_dump())
-
-        for relation in self.model.relations[self.metrics_aggregator._target_relation]:
-            targets = self.metrics_aggregator._get_targets(relation)
-            if targets and relation.app:
-                target_job_data = self._scrape_config.from_targets(targets, relation.app.name)
-                target_job = ScrapeJobModel(**target_job_data)
-                jobs.append(target_job.model_dump())
+                jobs.append(stored_jobs_model.model_dump(exclude_none=True))
         return jobs
 
     def _get_alert_groups(self) -> AlertRulesModel:
@@ -661,23 +657,19 @@ class COSProxyCharm(CharmBase):
     def _downstream_prometheus_scrape_relation_broken(self, _):
         self._stored.have_prometheus = False
 
-    def _set_cos_agent_job_data(self, scrape_jobs: List[Dict[str, Any]]):
-        """Update the metrics scrape jobs in cos-agent relations."""
-        data_key = CosAgentProviderUnitData.KEY
-        for relation in self.model.relations[COS_AGENT_DEFAULT_RELATION_NAME]:
-            if data_key not in relation.data[self.unit]:
-                continue
-            data = json.loads(relation.data[self.unit][data_key])
-            data.setdefault("metrics_scrape_jobs", [])
-            jobs = _dedupe_list(scrape_jobs)
-            data["metrics_scrape_jobs"] = jobs
-            relation.data[self.unit][data_key] = CosAgentProviderUnitData(**data).json()
+    def _is_vector_running(self) -> bool:
+        # TODO: Likely not needed, remove if so
+        return service_running("vector")
 
     def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
         """Send NRPE jobs over to MetricsEndpointAggregator."""
+        # NOTE: We never stop vector once started, so we assume that within an NRPE event, the
+        #       vector target can be scraped in the future.
+        vector_target = {self.unit.name: {"hostname": self.host, "port": VECTOR_PORT}}
         if event and isinstance(event, NrpeTargetsChangedEvent):
             removed_targets = event.removed_targets
             for r in removed_targets:
+                # NOTE: When the monitors relation departs, ensure that those jobs do not persist in relation data
                 self.metrics_aggregator.remove_prometheus_jobs(r)  # type: ignore
 
             removed_alerts = event.removed_alerts
@@ -701,18 +693,7 @@ class COSProxyCharm(CharmBase):
             self.metrics_aggregator.set_target_job_data(
                 nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
             )
-        vector_target = {self.unit.name: {"hostname": self.host, "port": VECTOR_PORT}}
         self.metrics_aggregator.set_target_job_data(vector_target, self.app.name)
-
-        # Add scrape jobs for cos-agent relations
-        cos_agent_jobs = [
-            self._scrape_config.from_targets(
-                nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
-            )
-            for nrpe in nrpes
-        ]
-        cos_agent_jobs.append(self._scrape_config.from_targets(vector_target, self.app.name))
-        self._set_cos_agent_job_data(cos_agent_jobs)
 
         for alert in current_alerts:
             self.metrics_aggregator.set_alert_rule_data(
@@ -1122,9 +1103,9 @@ class MetricsEndpointAggregator(Object):
         """
         if not self._charm.unit.is_leader():
             return
-
         # new scrape job for the relation that has changed
         updated_job = self._scrape_config.from_targets(targets, app_name, **kwargs)
+        self._update_cos_agent(new_job=updated_job)
 
         for relation in self.model.relations[self._prometheus_relation]:
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
@@ -1146,6 +1127,39 @@ class MetricsEndpointAggregator(Object):
         unit_name = event.unit.name
         self.remove_prometheus_jobs(job_name, unit_name)
 
+    def _update_cos_agent(
+        self, removed_job_name: Optional[str] = None, new_job: Optional[Dict[str, Any]] = None
+    ):
+        """Update stored state scrape jobs via cos-agent IFF a prometheus relation does not exist.
+
+        WARNING: This method creates a dependency between COSAgentProvider and MetricsEndpointAggregator.
+        """
+        if not self._charm.unit.is_leader():
+            return  # TODO: This duplicates the leader guard in all call paths
+        if removed_job_name is None and new_job is None:
+            raise ValueError("Either 'removed_job_name' or 'new_job' must be provided.")
+        if not hasattr(self._charm, "cos_agent"):
+            return
+        cos_agent_relations = self.model.relations.get(self._charm.cos_agent._relation_name, {})
+        prom_relations = self.model.relations.get(self._prometheus_relation, {})
+        if cos_agent_relations and not prom_relations:
+            for relation in cos_agent_relations:
+                if not (config_str := relation.data[self._charm.unit].get("config")):
+                    continue
+                config = json.loads(config_str)
+                jobs = config.get("metrics_scrape_jobs", [])
+                if new_job:
+                    # list of scrape jobs that have not changed
+                    jobs = [job for job in jobs if new_job.get("job_name") != job["job_name"]]
+                    jobs.append(new_job)
+                if removed_job_name:
+                    # list of scrape jobs after filtering
+                    jobs = [job for job in jobs if job.get("job_name") != removed_job_name]
+                config["metrics_scrape_jobs"] = jobs
+                relation.data[self._charm.unit]["config"] = json.dumps(config)
+                if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
+                    self._stored.jobs = jobs
+
     def remove_prometheus_jobs(self, job_name: str, unit_name: Optional[str] = ""):
         """Given a job name and unit name, remove scrape jobs associated.
 
@@ -1159,7 +1173,9 @@ class MetricsEndpointAggregator(Object):
         if not self._charm.unit.is_leader():
             return
 
-        for relation in self.model.relations[self._prometheus_relation]:
+        self._update_cos_agent(removed_job_name=job_name)
+
+        for relation in self.model.relations.get(self._prometheus_relation, {}):
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
             if not jobs:
                 continue

@@ -66,6 +66,8 @@ provides:
   downstream-prometheus-scrape:
     interface: prometheus_scrape
     optional: true
+    description: |
+      Send aggregated scrape jobs and alert rules to a Prometheus.
   filebeat:
     interface: elastic-beats
     optional: true
@@ -74,7 +76,7 @@ provides:
     optional: true
     description: |
       Integration to have the workload's telemetry scraped, also forwarding
-      alerts and dashboards to the related COS agent.
+      alerts, scrape jobs, and dashboards to the related COS agent.
 
 requires:
   dashboards:
@@ -90,6 +92,8 @@ requires:
   monitors:
     interface: monitors
     optional: true
+    description: |
+      Receive NRPE target information and its "check_" commands so they can be reformatted into scrape jobs and alert rules.
   prometheus:
     interface: prometheus-manual
     optional: true
@@ -99,6 +103,8 @@ requires:
   prometheus-target:
     interface: http
     optional: true
+    description: |
+      Receive host and port information so the remote host can be scraped via scrape jobs.
 
 config:
   options:
