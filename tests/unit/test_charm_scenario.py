@@ -3,7 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import scenario
 
-from charm import COSProxyCharm, _dedupe_list
+from charm import COSProxyCharm
+from metrics_endpoint_aggregator import _dedupe_list
 
 RELABEL_INSTANCE_CONFIG = {
     "source_labels": [

@@ -10,7 +10,7 @@ from cosl.rules import generic_alert_groups
 from ops.charm import CharmBase
 from ops.testing import Harness
 
-from charm import MetricsEndpointAggregator, _dedupe_list
+from metrics_endpoint_aggregator import MetricsEndpointAggregator, _dedupe_list
 
 PROMETHEUS_RELATION = "metrics-endpoint"
 SCRAPE_TARGET_RELATION = "prometheus-target"

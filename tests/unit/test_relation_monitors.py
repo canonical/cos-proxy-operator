@@ -145,16 +145,20 @@ class TestRelationMonitors(unittest.TestCase):
                     elif target_level == "juju_unit":
                         self.assertEqual(config["replacement"], JUJU_UNIT)
 
-    def test_cos_agent(self):
-        # GIVEN the "cos-agent", "monitors", and "downstream-prometheus-scrape" relations exist
+    def test_cos_agent_with_downstream_prometheus(self):
+        # GIVEN the "cos-agent", "monitors", "downstream-prometheus-scrape", and
+        # "prometheus-target" relations exist
         rel_id_agent = self.harness.add_relation("cos-agent", "agent")
         self.harness.add_relation_unit(rel_id_agent, "agent/0")
         rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
         self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
         rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
         self.harness.add_relation_unit(rel_id_prom, "prom/0")
+        rel_id_target = self.harness.add_relation("prometheus-target", "telegraf")
+        self.harness.add_relation_unit(rel_id_target, "telegraf/0")
 
         # WHEN the "monitors" relation populates its unit data
+        self.harness.update_relation_data(rel_id_target, "telegraf/0", self.default_target_unit_data)
         self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_monitors_unit_data)
 
         # THEN "cos-agent" scrape jobs are identical to those in the "downstream-prometheus-scrape" relation

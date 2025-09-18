@@ -689,6 +689,7 @@ class COSAgentProvider(Object):
 
         https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config
         """
+        # Get the scrape_configs from the charm
         if callable(self._scrape_configs):
             scrape_configs = self._scrape_configs()
         else:
@@ -705,13 +706,6 @@ class COSAgentProvider(Object):
             )
 
         scrape_configs = scrape_configs or []
-
-        # Augment job name to include the app name and a unique id (index)
-        # TODO: Do we really need the cos_proxy_0 prefix on all jobs? https://github.com/canonical/grafana-agent-operator/commit/3b44d3e96581dbf63eef49ce39017c28a495f67a
-        # for idx, scrape_config in enumerate(scrape_configs):
-        #     scrape_config["job_name"] = "_".join(
-        #         [self._charm.app.name, str(idx), scrape_config.get("job_name", "default")]
-        #     )
 
         return scrape_configs
 
