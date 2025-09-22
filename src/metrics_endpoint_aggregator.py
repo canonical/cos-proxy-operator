@@ -255,12 +255,13 @@ class MetricsEndpointAggregator(Object):
             app_name: a `str` identifying the application
             kwargs: a `dict` of the extra arguments passed to the function
         """
+        if not self._charm.unit.is_leader():
+            return
+
         # new scrape job for the relation that has changed
         updated_job = self._scrape_config.from_targets(targets, app_name, **kwargs)
         self._update_cos_agent(new_job=updated_job)
 
-        if not self._charm.unit.is_leader():
-            return
         for relation in self.model.relations[self._prometheus_relation]:
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
             # list of scrape jobs that have not changed
@@ -322,10 +323,11 @@ class MetricsEndpointAggregator(Object):
         For NRPE, the job name is calculated from an ID sent via the NRPE relation, and is
         sufficient to uniquely identify the target.
         """
-        self._update_cos_agent(removed_job_name=job_name)
-
         if not self._charm.unit.is_leader():
             return
+
+        self._update_cos_agent(removed_job_name=job_name)
+
         for relation in self.model.relations[self._prometheus_relation]:
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
             if not jobs:
