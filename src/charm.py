@@ -182,9 +182,10 @@ class COSProxyCharm(CharmBase):
         )
         self.cos_agent = COSAgentProvider(
             self,
-            # NOTE: we pass a callable to scrape_configs to calculate them within the _on_refresh
-            #       method rather than in the constructor
-            scrape_configs=self._get_scrape_configs,
+            # NOTE: we pass a callable to scrape_configs and alert_groups to calculate them within
+            # the _on_refresh method rather than in the constructor
+            scrape_configs=self._get_stored_scrape_configs,
+            alert_groups=self._get_stored_alert_groups,
             metrics_rules_dir=RULES_DIR,
             dashboard_dirs=[COS_PROXY_DASHBOARDS_DIR, DASHBOARDS_DIR],
             refresh_events=[
@@ -323,7 +324,7 @@ class COSProxyCharm(CharmBase):
                     with open(dashboard_file_path, "w") as dashboard_file:
                         json.dump(dashboard, dashboard_file, indent=4)
 
-    def _get_scrape_configs(self) -> List[Dict[str, Any]]:
+    def _get_stored_scrape_configs(self) -> List[Dict[str, Any]]:
         """Return the scrape jobs from stored state.
 
         The source of truth for scrape jobs exists in self.metrics_aggregator._stored.jobs
@@ -331,10 +332,20 @@ class COSProxyCharm(CharmBase):
         """
         return _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore
 
+    def _get_stored_alert_groups(self) -> Dict[str, Any]:
+        """Return the alert rules from stored state.
+
+        The source of truth for alert rules exists in self.metrics_aggregator._stored.alert_rules
+        and should be updated elsewhere accordingly to populate cos-agent relation data.
+        """
+        return {"groups":_type_convert_stored(self.metrics_aggregator._stored.alert_rules)}  # pyright: ignore
+
     def _get_alert_groups(self) -> AlertRulesModel:
         """Return the alert rules groups."""
         alert_rules_model = AlertRulesModel(groups=[])
-        stored_rules = _type_convert_stored(self.metrics_aggregator._stored.alert_rules)  # pyright: ignore
+        # FIXME: We cannot get all stored state alert rules here since this is only called for telegraf
+        # stored_rules = _type_convert_stored(self.metrics_aggregator._stored.alert_rules)  # pyright: ignore
+        stored_rules = []
         if stored_rules:
             for rule_data in stored_rules:
                 stored_rules_model = AlertGroupModel(**rule_data)  # pyright: ignore
@@ -352,14 +363,16 @@ class COSProxyCharm(CharmBase):
         return alert_rules_model
 
     def _handle_prometheus_alert_rule_files(self, rules_dir: str, app_name: str):
+        # FIXME: Why does telegraf pull from stored state but nrpe does not?
+        # Maybe we can try to call this method on more events (nrpe in addition to telegraf)
         groups = self._get_alert_groups()
 
         directory = Path(rules_dir)
         directory.mkdir(parents=True, exist_ok=True)
         alert_rules_file_path = directory / f"{app_name}-rules.yaml"
-
+        # TODO: Here we dump all groups from stored state into the file per app?? E.g. telegraf gets nrpe, vector, generic alerts
         with open(alert_rules_file_path, "w") as alert_rules_file:
-            yaml.dump(groups.model_dump(), alert_rules_file, default_flow_style=False)
+            yaml.dump(groups.model_dump(by_alias=True), alert_rules_file, default_flow_style=False)
 
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
@@ -644,15 +657,13 @@ class COSProxyCharm(CharmBase):
     def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
         """Send NRPE jobs over to MetricsEndpointAggregator."""
         if event and isinstance(event, NrpeTargetsChangedEvent):
-            removed_targets = event.removed_targets
-            for r in removed_targets:
-                self.metrics_aggregator.remove_prometheus_jobs(r)  # type: ignore
+            for target in event.removed_targets:
+                self.metrics_aggregator.remove_prometheus_jobs(target)  # type: ignore
 
-            removed_alerts = event.removed_alerts
-            for a in removed_alerts:
+            for alert in event.removed_alerts:
                 self.metrics_aggregator.remove_alert_rules(
-                    self.metrics_aggregator.group_name(a["labels"]["juju_unit"]),  # type: ignore
-                    a["labels"]["juju_unit"],  # type: ignore
+                    self.metrics_aggregator.group_name(alert["labels"]["juju_unit"]),  # type: ignore
+                    alert["labels"]["juju_unit"],  # type: ignore
                 )
 
             nrpes = cast(List[Dict[str, Any]], event.current_targets)

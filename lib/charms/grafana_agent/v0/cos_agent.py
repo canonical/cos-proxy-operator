@@ -614,6 +614,7 @@ class COSAgentProvider(Object):
         tracing_protocols: Optional[List[str]] = None,
         *,
         scrape_configs: Optional[Union[List[dict], Callable]] = None,
+        alert_groups: Optional[Callable] = None,
     ):
         """Create a COSAgentProvider instance.
 
@@ -642,6 +643,7 @@ class COSAgentProvider(Object):
         self._relation_name = relation_name
         self._metrics_endpoints = metrics_endpoints or []
         self._scrape_configs = scrape_configs or []
+        self._alert_groups = alert_groups or {}
         self._metrics_rules = metrics_rules_dir
         self._logs_rules = logs_rules_dir
         self._recursive = recurse_rules_dirs
@@ -715,11 +717,17 @@ class COSAgentProvider(Object):
         alert_rules = AlertRules(
             query_type="promql", topology=JujuTopology.from_charm(self._charm)
         )
-        alert_rules.add_path(self._metrics_rules, recursive=self._recursive)
+        alert_rules.add_path(
+            self._metrics_rules, recursive=self._recursive
+        )  # TODO: This then reads the telegraf.yaml which has all the jobs from charm._handle_prometheus_alert_rule_files
         alert_rules.add(
             generic_alert_groups.application_rules,
             group_name_prefix=JujuTopology.from_charm(self._charm).identifier,
-        )
+        )  # TODO: The prefixing (mymodel_fe2c9bbb_cos_proxy_) comes from topology.identifier
+        if callable(self._alert_groups):
+            alert_rules.add(
+                self._alert_groups(), group_name_prefix=JujuTopology.from_charm(self._charm).identifier
+            )
         return alert_rules.as_dict()
 
     @property
