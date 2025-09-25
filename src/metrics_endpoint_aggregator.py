@@ -19,141 +19,6 @@ from scrape_config import ScrapeConfig
 logger = logging.getLogger(__name__)
 
 
-def _dedupe_list(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Deduplicate items in the list via object identity."""
-    unique_items = []
-    for item in items:
-        if item not in unique_items:
-            unique_items.append(item)
-    return unique_items
-
-
-# TODO: Move to new file?
-@dataclass
-class ScrapeJobContext:
-    # TODO: Add a test which checks the combinations of self.removed_ attributes
-    """Coordinate events for scrape jobs."""
-
-    removed_job_name: Optional[str] = None
-    removed_unit_name: Optional[str] = None
-    updated_job: Dict[str, Any] = field(default_factory=dict)
-
-    def get_jobs(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """In the event of scrape job additions, removal, or both, return the resulting list of scrape jobs."""
-        # Add scrape jobs
-        jobs = [job for job in jobs if job["job_name"] != self.updated_job.get("job_name")]
-        if self.updated_job:
-            jobs.append(self.updated_job)
-
-        # Remove scrape jobs
-        if not (changed_job := [j for j in jobs if j.get("job_name") == self.removed_job_name]):
-            return jobs
-        changed_job = changed_job[0]
-        jobs = [job for job in jobs if job.get("job_name") != self.removed_job_name]
-        if not self.removed_unit_name:
-            return jobs
-        # list of scrape jobs not associated with the departing unit
-        configs_kept = [
-            config
-            for config in changed_job["static_configs"]  # type: ignore
-            if config.get("labels", {}).get("juju_unit") != self.removed_unit_name
-        ]
-        if configs_kept:
-            changed_job["static_configs"] = configs_kept  # type: ignore
-            jobs.append(changed_job)
-
-        return jobs
-
-
-@dataclass
-class AlertRuleContext:
-    # TODO: Add a test which checks the combinations of self.removed_ attributes
-    """Coordinate events for alert rules."""
-
-    removed_group_name: Optional[str] = None
-    removed_unit_name: Optional[str] = None
-    updated_group: Dict[str, Any] = field(default_factory=dict)
-
-    def get_groups(self, alert_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """In the event of alert rule additions, removal, or both, return the resulting list of alert rule groups."""
-        if not (groups := _dedupe_list(alert_rules.get("groups", []))):
-            return groups
-
-        # Add alert rule groups
-        for group in groups:
-            # TODO:                      "juju_mymodel_fe2c9bb_ubuntu_is_amazing_0_alert_rules"         -> The og job name pre-cos_agent
-            # "mymodel_fe2c9bbb_cos_proxy_juju_mymodel_fe2c9bb_ubuntu_is_amazing_0_alert_rules_alerts"  -> After writing to file and to databag
-            if group["name"] == self.updated_group.get("name"):
-                # TODO: The labels are different, the one from groups is more correct. But removing this logic breaks original code
-                group["rules"] = [
-                    r for r in group["rules"] if r not in self.updated_group["rules"]
-                ]
-                group["rules"].extend(self.updated_group["rules"])
-        group_names = [g["name"] for g in groups]
-        if self.updated_group and self.updated_group.get("name") not in group_names:
-            groups.append(self.updated_group)
-
-        # Remove alert rule groups
-        if not (
-            changed_group := [
-                group for group in groups if group["name"] == self.removed_group_name
-            ]
-        ):
-            return groups
-        changed_group = changed_group[0]
-        groups = [group for group in groups if group["name"] != self.removed_group_name]
-        if not self.removed_unit_name:
-            return groups
-        # list of alert rules not associated with the departing unit
-        rules_kept = [
-            rule
-            for rule in changed_group.get("rules")  # type: ignore
-            if rule.get("labels").get("juju_unit") != self.removed_unit_name
-        ]
-        if rules_kept:
-            changed_group["rules"] = rules_kept  # type: ignore
-            groups.append(changed_group)
-
-        return groups
-
-    def get_groups_lax(self, alert_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """In the event of alert rule additions, removal, or both, return the resulting list of alert rule groups."""
-        if not (groups := _dedupe_list(alert_rules.get("groups", []))):
-            return groups
-
-        # Add alert rule groups
-        # TODO:                      "juju_mymodel_fe2c9bb_ubuntu_is_amazing_0_alert_rules"         -> The og job name pre-cos_agent
-        # "mymodel_fe2c9bbb_cos_proxy_juju_mymodel_fe2c9bb_ubuntu_is_amazing_0_alert_rules_alerts"  -> After writing to file and to databag
-        group_names = [g["name"] for g in groups]
-        if self.updated_group and not any(self.updated_group.get("name") in name for name in group_names):
-            groups.append(self.updated_group)
-
-        # Remove alert rule groups
-        if not self.removed_group_name:
-            return groups
-        if not (
-            changed_group := [
-                group for group in groups if self.removed_group_name in group["name"]
-            ]
-        ):
-            return groups
-        changed_group = changed_group[0]
-        groups = [group for group in groups if self.removed_group_name not in group["name"]]
-        if not self.removed_unit_name:
-            return groups
-        # list of alert rules not associated with the departing unit
-        rules_kept = [
-            rule
-            for rule in changed_group.get("rules")  # type: ignore
-            if rule.get("labels").get("juju_unit") != self.removed_unit_name
-        ]
-        if rules_kept:
-            changed_group["rules"] = rules_kept  # type: ignore
-            groups.append(changed_group)
-
-        return groups
-
-
 class MetricsEndpointAggregator(Object):
     """Aggregate metrics from multiple scrape targets.
 
@@ -289,7 +154,7 @@ class MetricsEndpointAggregator(Object):
 
         # manage Prometheus charm relation events
         prometheus_events = self._charm.on[self._prometheus_relation]
-        self.framework.observe(prometheus_events.relation_joined, self._set_prometheus_data)
+        self.framework.observe(prometheus_events.relation_joined, self.update_alerts)
 
         self.path_to_own_alert_rules = path_to_own_alert_rules
 
@@ -305,56 +170,83 @@ class MetricsEndpointAggregator(Object):
         self.framework.observe(alert_rule_events.relation_changed, self._on_alert_rules_changed)
         self.framework.observe(alert_rule_events.relation_departed, self._on_alert_rules_departed)
 
-    def _set_prometheus_data(self, event: Optional[RelationJoinedEvent] = None):
-        """Ensure every new Prometheus instances is updated.
-
-        Any time a new Prometheus unit joins the relation with
-        `MetricsEndpointAggregator`, that Prometheus unit is provided
-        with the complete set of existing scrape jobs and alert rules.
-        """
-        if not self._charm.unit.is_leader():
-            return
-
-        # Gather the scrape jobs, one per relation
-        jobs = [] + _type_convert_stored(self._stored.jobs)  # pyright: ignore
-
-        for relation in self.model.relations[self._target_relation]:
-            targets = self._get_targets(relation)
-            if targets and relation.app:
-                jobs.append(self._scrape_config.from_targets(targets, relation.app.name))
-
-        # Gather the alert rules
-        groups = [] + _type_convert_stored(
-            self._stored.alert_rules  # pyright: ignore
-        )  # list of alert rule groups
-        for relation in self.model.relations[self._alert_rules_relation]:
-            unit_rules = self._get_alert_rules(relation)
-            if unit_rules and relation.app:
-                appname = relation.app.name
-                rules = self._label_alert_rules(unit_rules, appname)
-                group = {"name": self.group_name(appname), "rules": rules}
-                groups.append(group)
-        alert_rules = AlertRules(query_type="promql", topology=self.topology)
-        # Add alert rules from file
-        if self.path_to_own_alert_rules:
-            alert_rules.add_path(self.path_to_own_alert_rules, recursive=True)
-        # Add generic alert rules
-        alert_rules.add(
-            copy.deepcopy(generic_alert_groups.application_rules),
-            group_name_prefix=self.topology.identifier,
-        )
-        groups.extend(alert_rules.as_dict()["groups"])
-
-        groups = _dedupe_list(groups)
-        jobs = _dedupe_list(jobs)
-
-        # Set scrape jobs and alert rules in relation data
-        relations = [event.relation] if event else self.model.relations[self._prometheus_relation]
+    def _set_prometheus_rel_data_from_stored_state(self, event: Optional[RelationJoinedEvent] = None):
+        jobs = _type_convert_stored(self._stored.jobs)  # pyright: ignore
+        groups = _type_convert_stored(self._stored.alert_rules)  # pyright: ignore
+        if event and hasattr(event, "relation"):
+            relations = [event.relation]
+        else:
+            relations = self.model.relations[self._prometheus_relation]
         for rel in relations:
             rel.data[self._charm.app]["scrape_jobs"] = json.dumps(jobs)  # type: ignore
             rel.data[self._charm.app]["alert_rules"] = json.dumps(  # type: ignore
                 {"groups": groups if self._forward_alert_rules else []}
             )
+
+    def update_alerts(self, event: Optional[RelationJoinedEvent] = None):
+        """Recalculate all data sources, update stored state, set relation data."""
+        self._set_stored_state_for_downstream_data()
+        self._set_prometheus_rel_data_from_stored_state(event)
+
+    def _add_constant_alerts(self, groups: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Return all alerts which are static and not dependant on relations or events."""
+        # Add cos-proxy's own rules from file
+        alert_rules = AlertRules("promql", self.topology)
+        if self.path_to_own_alert_rules:
+            alert_rules.add_path(self.path_to_own_alert_rules, recursive=True)
+
+        # Add generic alert rules
+        alert_rules.add(
+            copy.deepcopy(generic_alert_groups.application_rules),
+            group_name_prefix=self.topology.identifier,
+        )
+
+        groups.extend(alert_rules.as_dict()["groups"])
+
+        return groups
+
+    def _set_stored_state_for_downstream_data(self):
+        """Recalculate all data source and update stored state for alert rules and scrape configs."""
+        if not self._charm.unit.is_leader():
+            return
+
+        # Gather the scrape jobs from targets relation data
+        jobs = [] + _type_convert_stored(self._stored.jobs)  # pyright: ignore
+        for relation in self.model.relations[self._target_relation]:
+            targets = self._get_targets(relation)
+            if targets and relation.app:
+                jobs.append(self._scrape_config.from_targets(targets, relation.app.name))
+
+        # Gather the alert rules from rules relation data
+        groups = [] + _type_convert_stored(self._stored.alert_rules)  # pyright: ignore
+
+        groups.extend(self._add_constant_alerts(groups))
+        groups.extend(self._get_alert_groups_from_rules_relation())
+
+        # Deduplicate prior to storing the data
+        groups = _dedupe_list(groups)
+        jobs = _dedupe_list(jobs)
+
+        # Update stored state
+        if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
+            self._stored.jobs = jobs
+        if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
+            self._stored.alert_rules = groups
+
+    def _get_alert_groups_from_rules_relation(self) -> List[Dict[str, Any]]:
+        """Return the alert rules groups.
+
+        Add rules from _alert_rules_relation ("alert_rules", "prometheus-rules")
+        """
+        groups = []
+        for relation in self.model.relations[self._alert_rules_relation]:
+            unit_rules = self._get_alert_rules(relation)
+            if not (unit_rules and relation.app):
+                continue
+            rules = self._label_alert_rules(unit_rules, relation.app.name)
+            groups.append({"name": self.group_name(relation.app.name), "rules": rules})
+
+        return groups
 
     def _on_prometheus_targets_changed(self, event):
         """Update scrape jobs in response to scrape target changes.
@@ -371,12 +263,10 @@ class MetricsEndpointAggregator(Object):
         self.set_target_job_data(targets, event.relation.app.name)
 
     def set_target_job_data(self, targets: dict, app_name: str, **kwargs) -> None:
-        """Update scrape jobs in response to scrape target changes.
+        """Update scrape jobs given a scrape target.
 
-        When there is any change in relation data with any scrape
-        target, the Prometheus scrape job, for that specific target is
-        updated. Additionally, if this method is called manually, do the
-        same.
+        This method updates the stored state and all downstream (e.g. cos-agent, prometheus, etc.)
+        relation data.
 
         Args:
             targets: a `dict` containing target information
@@ -398,6 +288,7 @@ class MetricsEndpointAggregator(Object):
 
             if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
                 self._stored.jobs = jobs
+                # TODO: Check all docstrings
 
     def _on_prometheus_targets_departed(self, event):
         """Remove scrape jobs when a target departs.
@@ -411,13 +302,13 @@ class MetricsEndpointAggregator(Object):
 
     def _update_cos_agent(
         self,
-        scrape_job_context: Optional[ScrapeJobContext] = None,
-        alert_rule_context: Optional[AlertRuleContext] = None,
+        scrape_job_context: Optional["ScrapeJobContext"] = None,
+        alert_rule_context: Optional["AlertRuleContext"] = None,
     ):
         """Coordinate cos-agent (alert rules and scrape configs) with downstream prometheus relation data.
 
-        This is done by updating stored state via cos-agent IFF a prometheus relation does not
-        exist. Otherwise, the downstream prometheus relation handles this.
+        Update stored state via cos-agent IFF a prometheus relation does not exist. Otherwise, the
+        downstream prometheus relation handles this.
 
         WARNING: This method creates a dependency between COSAgentProvider and MetricsEndpointAggregator.
         """
@@ -429,7 +320,7 @@ class MetricsEndpointAggregator(Object):
             for relation in cos_agent_relations:
                 if not (config_str := relation.data[self._charm.unit].get("config")):
                     continue
-                # TODO: What are all the places which write to cos-agent data, dedupe there as well?
+
                 config = json.loads(config_str)
 
                 # Scrape configs
@@ -440,13 +331,16 @@ class MetricsEndpointAggregator(Object):
                         self._stored.jobs = jobs
 
                 # Alert rules
+                metrics_alert_rules = config.get("metrics_alert_rules", {})
                 if alert_rule_context is not None:
-                    groups = alert_rule_context.get_groups_lax(config.get("metrics_alert_rules", {}))
-                    config["metrics_alert_rules"] = {
-                        "groups": groups if self._forward_alert_rules else []
-                    }
-                    if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
-                        self._stored.alert_rules = groups
+                    groups = alert_rule_context.get_groups(metrics_alert_rules)
+                else:
+                    groups = metrics_alert_rules.get("groups", [])
+                config["metrics_alert_rules"] = {
+                    "groups": groups if self._forward_alert_rules else []
+                }
+                if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
+                    self._stored.alert_rules = groups
 
                 # Update relation data
                 relation.data[self._charm.unit]["config"] = json.dumps(config)
@@ -536,11 +430,9 @@ class MetricsEndpointAggregator(Object):
         else:
             rules = [unit_rules]
 
-        # group_name = f'{self.topology.identifier}_{AlertRules(query_type="promql", topology=self.topology)._sanitize_metric_name(self.group_name(name))}'
-        updated_group = {"name": self.group_name(name.replace("-", "_")), "rules": rules}
+        updated_group = {"name": self.group_name(name), "rules": rules}
         alert_rule_context = AlertRuleContext(updated_group=updated_group)
         self._update_cos_agent(alert_rule_context=alert_rule_context)
-
         for relation in self.model.relations[self._prometheus_relation]:
             alert_rules = json.loads(relation.data[self._charm.app].get("alert_rules", "{}"))
             groups = alert_rule_context.get_groups(alert_rules)
@@ -565,15 +457,14 @@ class MetricsEndpointAggregator(Object):
         """Remove an alert rule group from relation data."""
         if not self._charm.unit.is_leader():
             return
-        alert_rule_context = AlertRuleContext(group_name.replace("-", "_"), unit_name)
+
+        alert_rule_context = AlertRuleContext(group_name, unit_name)
         self._update_cos_agent(alert_rule_context=alert_rule_context)
 
         for relation in self.model.relations[self._prometheus_relation]:
             alert_rules = json.loads(relation.data[self._charm.app].get("alert_rules", "{}"))
             groups = alert_rule_context.get_groups(alert_rules)
-            relation.data[self._charm.app]["alert_rules"] = json.dumps(
-                {"groups": groups if self._forward_alert_rules else []}
-            )
+            relation.data[self._charm.app]["alert_rules"] = json.dumps({"groups": groups})
 
             if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
                 self._stored.alert_rules = groups
@@ -649,3 +540,95 @@ class MetricsEndpointAggregator(Object):
                 labeled_rules.append(rule)
 
         return labeled_rules
+
+
+def _dedupe_list(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deduplicate items in the list via object identity."""
+    unique_items = []
+    for item in items:
+        if item not in unique_items:
+            unique_items.append(item)
+    return unique_items
+
+
+@dataclass
+class ScrapeJobContext:
+    """Coordinate events for scrape jobs."""
+
+    removed_job_name: Optional[str] = None
+    removed_unit_name: Optional[str] = None
+    updated_job: Dict[str, Any] = field(default_factory=dict)
+
+    def get_jobs(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """In the event of scrape job additions, removal, or both, return the resulting list of scrape jobs."""
+        # Add scrape jobs
+        jobs = [job for job in jobs if job["job_name"] != self.updated_job.get("job_name")]
+        if self.updated_job:
+            jobs.append(self.updated_job)
+
+        # Remove scrape jobs
+        if not (changed_job := [j for j in jobs if j.get("job_name") == self.removed_job_name]):
+            return jobs
+        changed_job = changed_job[0]
+        jobs = [job for job in jobs if job.get("job_name") != self.removed_job_name]
+        if not self.removed_unit_name:
+            return jobs
+        # list of scrape jobs not associated with the departing unit
+        configs_kept = [
+            config
+            for config in changed_job["static_configs"]  # type: ignore
+            if config.get("labels", {}).get("juju_unit") != self.removed_unit_name
+        ]
+        if configs_kept:
+            changed_job["static_configs"] = configs_kept  # type: ignore
+            jobs.append(changed_job)
+
+        return jobs
+
+
+@dataclass
+class AlertRuleContext:
+    """Coordinate events for alert rules."""
+
+    removed_group_name: Optional[str] = None
+    removed_unit_name: Optional[str] = None
+    updated_group: Dict[str, Any] = field(default_factory=dict)
+
+    def get_groups(self, alert_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """In the event of alert rule additions, removal, or both, return the resulting list of alert rule groups."""
+        if not (groups := _dedupe_list(alert_rules.get("groups", []))):
+            return groups
+
+        # Add alert rule groups
+        for group in groups:
+            if group["name"] == self.updated_group.get("name"):
+                group["rules"] = [
+                    r for r in group["rules"] if r not in self.updated_group["rules"]
+                ]
+                group["rules"].extend(self.updated_group["rules"])
+        group_names = [g["name"] for g in groups]
+        if self.updated_group and self.updated_group.get("name") not in group_names:
+            groups.append(self.updated_group)
+
+        # Remove alert rule groups
+        if not (
+            changed_group := [
+                group for group in groups if group["name"] == self.removed_group_name
+            ]
+        ):
+            return groups
+        changed_group = changed_group[0]
+        groups = [group for group in groups if group["name"] != self.removed_group_name]
+        if not self.removed_unit_name:
+            return groups
+        # list of alert rules not associated with the departing unit
+        rules_kept = [
+            rule
+            for rule in changed_group.get("rules")  # type: ignore
+            if rule.get("labels").get("juju_unit") != self.removed_unit_name
+        ]
+        if rules_kept:
+            changed_group["rules"] = rules_kept  # type: ignore
+            groups.append(changed_group)
+
+        return groups

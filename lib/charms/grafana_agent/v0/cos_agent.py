@@ -687,11 +687,11 @@ class COSAgentProvider(Object):
 
     @property
     def _scrape_jobs(self) -> List[Dict]:
-        """Return a prometheus_scrape-like data structure for jobs.
+        """Return a list of scrape_configs.
 
         https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config
         """
-        # Get the scrape_configs from the charm
+        # Optionally allow the charm to set the scrape_configs
         if callable(self._scrape_configs):
             scrape_configs = self._scrape_configs()
         else:
@@ -713,21 +713,22 @@ class COSAgentProvider(Object):
 
     @property
     def _metrics_alert_rules(self) -> Dict:
-        """Use (for now) the prometheus_scrape AlertRules to initialize this."""
+        """Return a dict of alert rule groups."""
+        # Optionally allow the charm to set the metrics_alert_rules
+        if callable(self._alert_groups):
+            return self._alert_groups()
+
+        # TODO: Search "COSAgentProvider(" in **/src/**/*.py for instances of charms using cos-agent
         alert_rules = AlertRules(
             query_type="promql", topology=JujuTopology.from_charm(self._charm)
         )
-        alert_rules.add_path(
-            self._metrics_rules, recursive=self._recursive
-        )  # TODO: This then reads the telegraf.yaml which has all the jobs from charm._handle_prometheus_alert_rule_files
+        # TODO: The interesting part here is the _metrics_rules dir bc it dynamically writes to src/cos_agent/prometheus_alert_rules
+        # For each related app over prom-rules
+        alert_rules.add_path(self._metrics_rules, recursive=self._recursive)
         alert_rules.add(
             generic_alert_groups.application_rules,
             group_name_prefix=JujuTopology.from_charm(self._charm).identifier,
-        )  # TODO: The prefixing (mymodel_fe2c9bbb_cos_proxy_) comes from topology.identifier
-        if callable(self._alert_groups):
-            alert_rules.add(
-                self._alert_groups(), group_name_prefix=JujuTopology.from_charm(self._charm).identifier
-            )
+        )
         return alert_rules.as_dict()
 
     @property

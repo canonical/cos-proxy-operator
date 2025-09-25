@@ -100,6 +100,8 @@ requires:
   prometheus-rules:
     interface: prometheus-rules
     optional: true
+    description: |
+      Receive alert rules over relation data
   prometheus-target:
     interface: http
     optional: true

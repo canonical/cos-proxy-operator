@@ -184,6 +184,46 @@ BUNDLED_RULES = [
     }
 ]
 
+GENERIC_RULES = [
+    {
+        "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
+        "rules": [
+            {
+                "alert": "HostDown",
+                "expr": "up < 1",
+                "for": "5m",
+                "labels": {
+                    "severity": "critical",
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                    "juju_application": "cos-proxy",
+                    "juju_charm": "cos-proxy",
+                },
+                "annotations": {
+                    "summary": "Host '{{ $labels.instance }}' is down.",
+                    "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                },
+            },
+            {
+                "alert": "HostMetricsMissing",
+                "expr": "absent(up)",
+                "for": "5m",
+                "labels": {
+                    "severity": "critical",
+                    "juju_model": "testmodel",
+                    "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
+                    "juju_application": "cos-proxy",
+                    "juju_charm": "cos-proxy",
+                },
+                "annotations": {
+                    "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
+                    "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
+                },
+            },
+        ],
+    },
+]
+
 
 @patch.object(lzma, "compress", new=lambda x, *args, **kwargs: x)
 @patch.object(lzma, "decompress", new=lambda x, *args, **kwargs: x)
@@ -197,10 +237,7 @@ class COSProxyCharmTest(unittest.TestCase):
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 
-    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_scrape_target_relation_without_downstream_prometheus_blocks(
-        self, mock_handle_prometheus_alert_rule_files
-    ):
+    def test_scrape_target_relation_without_downstream_prometheus_blocks(self):
         self.harness.set_leader(True)
 
         rel_id = self.harness.add_relation("prometheus-target", "target-app")
@@ -300,10 +337,7 @@ class COSProxyCharmTest(unittest.TestCase):
         scrape_jobs = json.loads(prometheus_rel_data.get("scrape_jobs", "[]"))
         self.assertEqual(scrape_jobs, [EXPECTED_VECTOR_SCRAPE])
 
-    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(
-        self, mock_handle_prometheus_alert_rule_files
-    ):
+    def test_scrape_jobs_are_forwarded_on_adding_targets_then_prometheus(self):
         self.harness.set_leader(True)
 
         target_rel_id = self.harness.add_relation("prometheus-target", "target-app")
@@ -370,45 +404,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 3)
         expected_groups = [
-            {
-                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
-                "rules": [
-                    {
-                        "alert": "HostDown",
-                        "expr": "up < 1",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Host '{{ $labels.instance }}' is down.",
-                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                    {
-                        "alert": "HostMetricsMissing",
-                        "expr": "absent(up)",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
-                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                ],
-            },
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
                 "rules": [
@@ -434,7 +430,8 @@ class COSProxyCharmTest(unittest.TestCase):
             },
         ]
 
-        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
+        self.assertEqual(len(groups), len(GENERIC_RULES + BUNDLED_RULES + expected_groups))
+        self.assertCountEqual(groups, GENERIC_RULES + BUNDLED_RULES + expected_groups)
 
     def test_alert_rules_are_forwarded_on_adding_targets_then_prometheus(self):
         self.harness.set_leader(True)
@@ -458,7 +455,6 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 3)
         expected_groups = [
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
@@ -483,48 +479,12 @@ class COSProxyCharmTest(unittest.TestCase):
                     }
                 ],
             },
-            {
-                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
-                "rules": [
-                    {
-                        "alert": "HostDown",
-                        "expr": "up < 1",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Host '{{ $labels.instance }}' is down.",
-                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                    {
-                        "alert": "HostMetricsMissing",
-                        "expr": "absent(up)",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
-                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                ],
-            },
         ]
-        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
 
-    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_multiple_scrape_jobs_are_forwarded(self, mock_handle_prometheus_alert_rule_files):
+        self.assertEqual(len(groups), len(GENERIC_RULES + BUNDLED_RULES + expected_groups))
+        self.assertCountEqual(groups, GENERIC_RULES + BUNDLED_RULES + expected_groups)
+
+    def test_multiple_scrape_jobs_are_forwarded(self):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
@@ -629,45 +589,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 4)  # HostHealth added automatically
         expected_groups = [
-            {
-                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
-                "rules": [
-                    {
-                        "alert": "HostDown",
-                        "expr": "up < 1",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Host '{{ $labels.instance }}' is down.",
-                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                    {
-                        "alert": "HostMetricsMissing",
-                        "expr": "absent(up)",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
-                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                ],
-            },
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app-1_alert_rules",
                 "rules": [
@@ -713,12 +635,11 @@ class COSProxyCharmTest(unittest.TestCase):
                 ],
             },
         ]
-        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
 
-    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_scrape_job_removal_differentiates_between_applications(
-        self, mock_handle_prometheus_alert_rule_files
-    ):
+        self.assertEqual(len(groups), len(GENERIC_RULES + BUNDLED_RULES + expected_groups))
+        self.assertCountEqual(groups, GENERIC_RULES + BUNDLED_RULES + expected_groups)
+
+    def test_scrape_job_removal_differentiates_between_applications(self):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
@@ -814,46 +735,7 @@ class COSProxyCharmTest(unittest.TestCase):
         self.harness.remove_relation_unit(alert_rules_rel_id_2, "rules-app-2/0")
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 3)
-
         expected_groups = [
-            {
-                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
-                "rules": [
-                    {
-                        "alert": "HostDown",
-                        "expr": "up < 1",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Host '{{ $labels.instance }}' is down.",
-                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                    {
-                        "alert": "HostMetricsMissing",
-                        "expr": "absent(up)",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
-                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                ],
-            },
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app-1_alert_rules",
                 "rules": [
@@ -879,12 +761,10 @@ class COSProxyCharmTest(unittest.TestCase):
             },
         ]
 
-        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
+        self.assertEqual(len(groups), len(GENERIC_RULES + BUNDLED_RULES + expected_groups))
+        self.assertCountEqual(groups, GENERIC_RULES + BUNDLED_RULES + expected_groups)
 
-    @patch.object(COSProxyCharm, "_handle_prometheus_alert_rule_files")
-    def test_removing_scrape_jobs_differentiates_between_units(
-        self, mock_handle_prometheus_alert_rule_files
-    ):
+    def test_removing_scrape_jobs_differentiates_between_units(self):
         self.harness.set_leader(True)
 
         prometheus_rel_id = self.harness.add_relation(
@@ -983,46 +863,7 @@ class COSProxyCharmTest(unittest.TestCase):
 
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
-        self.assertEqual(len(groups), 3)
-
         expected_groups = [
-            {
-                "name": "testmodel_ae3c0b14_cos_proxy_HostHealth_alerts",
-                "rules": [
-                    {
-                        "alert": "HostDown",
-                        "expr": "up < 1",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Host '{{ $labels.instance }}' is down.",
-                            "description": "Host '{{ $labels.instance }}' is down, failed to scrape.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                    {
-                        "alert": "HostMetricsMissing",
-                        "expr": "absent(up)",
-                        "for": "5m",
-                        "labels": {
-                            "severity": "critical",
-                            "juju_model": "testmodel",
-                            "juju_model_uuid": "ae3c0b14-9c3a-4262-b560-7a6ad7d3642f",
-                            "juju_application": "cos-proxy",
-                            "juju_charm": "cos-proxy",
-                        },
-                        "annotations": {
-                            "summary": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.",
-                            "description": "Metrics not received from host '{{ $labels.instance }}', failed to remote write.\n                            VALUE = {{ $value }}\n                            LABELS = {{ $labels }}",
-                        },
-                    },
-                ],
-            },
             {
                 "name": "juju_testmodel_ae3c0b1_rules-app_alert_rules",
                 "rules": [
@@ -1048,7 +889,8 @@ class COSProxyCharmTest(unittest.TestCase):
             },
         ]
 
-        self.assertCountEqual(groups, BUNDLED_RULES + expected_groups)
+        self.assertEqual(len(groups), len(GENERIC_RULES + BUNDLED_RULES + expected_groups))
+        self.assertCountEqual(groups, GENERIC_RULES + BUNDLED_RULES + expected_groups)
 
     @patch.object(COSProxyCharm, "_create_dashboard_files")
     def test_dashboard_are_forwarded(self, mock_create_dashboard_files):

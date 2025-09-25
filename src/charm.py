@@ -42,7 +42,6 @@ from csv import DictReader, DictWriter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
-import yaml
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.operator_libs_linux.v0.apt import remove_package
@@ -55,11 +54,7 @@ from charms.operator_libs_linux.v1.systemd import (
 )
 from charms.prometheus_k8s.v0.prometheus_scrape import _type_convert_stored
 from cosl import MandatoryRelationPairs
-from interfaces.prometheus_scrape.v0.schema import (
-    AlertGroupModel,
-    AlertRulesModel,
-)
-from ops import RelationBrokenEvent, RelationChangedEvent
+from ops import RelationChangedEvent
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
@@ -78,6 +73,7 @@ logger = logging.getLogger(__name__)
 DASHBOARDS_DIR = "./src/cos_agent/grafana_dashboards"
 COS_PROXY_DASHBOARDS_DIR = "./src/grafana_dashboards"
 RULES_DIR = "./src/cos_agent/prometheus_alert_rules"
+OWN_RULES_DIR = "./src/prometheus_alert_rules"
 VECTOR_PORT = 9090
 
 
@@ -173,7 +169,7 @@ class COSProxyCharm(CharmBase):
             self,
             resolve_addresses=True,
             forward_alert_rules=cast(bool, self.config["forward_alert_rules"]),
-            path_to_own_alert_rules="./src/prometheus_alert_rules",
+            path_to_own_alert_rules=OWN_RULES_DIR,
         )
         self.nrpe_exporter = NrpeExporterProvider(self)
         self.framework.observe(
@@ -191,6 +187,8 @@ class COSProxyCharm(CharmBase):
             refresh_events=[
                 self.on.prometheus_target_relation_changed,
                 self.on.prometheus_target_relation_broken,
+                self.on.prometheus_rules_relation_changed,
+                self.on.prometheus_rules_relation_broken,
                 self.on.dashboards_relation_changed,
                 self.on.dashboards_relation_broken,
                 self.nrpe_exporter.on.nrpe_targets_changed,
@@ -230,10 +228,6 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(
             self.on.prometheus_target_relation_joined,  # pyright: ignore
             self._prometheus_target_relation_joined,
-        )
-        self.framework.observe(
-            self.on.prometheus_target_relation_changed,  # pyright: ignore
-            self._prometheus_target_relation_changed,
         )
         self.framework.observe(
             self.on.prometheus_target_relation_broken,  # pyright: ignore
@@ -291,13 +285,12 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(self.on.stop, self._on_stop)
         self.framework.observe(self.on.collect_unit_status, self._set_status)
 
-        self.framework.observe(self.on.config_changed, self._update_alerts)
-
-    def _update_alerts(self, event):
-        self.metrics_aggregator._set_prometheus_data()
+        # NOTE: We need this because "forward_alert_rules" conditionally changes the databag
+        self.framework.observe(self.on.config_changed, self.metrics_aggregator.update_alerts)
 
     def _on_cos_agent_relation_joined(self, _):
         self._stored.have_gagent = True
+        self.metrics_aggregator.update_alerts()
 
     def _on_cos_agent_relation_broken(self, _):
         self._stored.have_gagent = False
@@ -340,40 +333,6 @@ class COSProxyCharm(CharmBase):
         """
         return {"groups":_type_convert_stored(self.metrics_aggregator._stored.alert_rules)}  # pyright: ignore
 
-    def _get_alert_groups(self) -> AlertRulesModel:
-        """Return the alert rules groups."""
-        alert_rules_model = AlertRulesModel(groups=[])
-        # FIXME: We cannot get all stored state alert rules here since this is only called for telegraf
-        # stored_rules = _type_convert_stored(self.metrics_aggregator._stored.alert_rules)  # pyright: ignore
-        stored_rules = []
-        if stored_rules:
-            for rule_data in stored_rules:
-                stored_rules_model = AlertGroupModel(**rule_data)  # pyright: ignore
-                alert_rules_model.groups.append(stored_rules_model)
-
-        for relation in self.model.relations[self.metrics_aggregator._alert_rules_relation]:
-            unit_rules = self.metrics_aggregator._get_alert_rules(relation)
-            if unit_rules and relation.app:
-                appname = relation.app.name
-                rules = self.metrics_aggregator._label_alert_rules(unit_rules, appname)
-                group_name = self.metrics_aggregator.group_name(appname)
-                group = AlertGroupModel(name=group_name, rules=rules)
-                alert_rules_model.groups.append(group)
-
-        return alert_rules_model
-
-    def _handle_prometheus_alert_rule_files(self, rules_dir: str, app_name: str):
-        # FIXME: Why does telegraf pull from stored state but nrpe does not?
-        # Maybe we can try to call this method on more events (nrpe in addition to telegraf)
-        groups = self._get_alert_groups()
-
-        directory = Path(rules_dir)
-        directory.mkdir(parents=True, exist_ok=True)
-        alert_rules_file_path = directory / f"{app_name}-rules.yaml"
-        # TODO: Here we dump all groups from stored state into the file per app?? E.g. telegraf gets nrpe, vector, generic alerts
-        with open(alert_rules_file_path, "w") as alert_rules_file:
-            yaml.dump(groups.model_dump(by_alias=True), alert_rules_file, default_flow_style=False)
-
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
 
@@ -384,7 +343,7 @@ class COSProxyCharm(CharmBase):
         self._stored.have_dashboards = False
         self._delete_existing_dashboard_files(DASHBOARDS_DIR)
 
-    def _prometheus_rules_relation_joined(self, _):
+    def _prometheus_rules_relation_joined(self, event: RelationChangedEvent):
         self._stored.have_prometheus_rules = True
 
     def _prometheus_rules_relation_broken(self, _):
@@ -639,12 +598,8 @@ class COSProxyCharm(CharmBase):
     def _prometheus_target_relation_joined(self, _):
         self._stored.have_targets = True
 
-    def _prometheus_target_relation_changed(self, event: RelationChangedEvent):
-        self._handle_prometheus_alert_rule_files(RULES_DIR, event.app.name)
-
-    def _prometheus_target_relation_broken(self, event: RelationBrokenEvent):
+    def _prometheus_target_relation_broken(self, _):
         self._stored.have_targets = False
-        self._handle_prometheus_alert_rule_files(RULES_DIR, event.app.name)
 
     def _downstream_prometheus_scrape_relation_joined(self, _):
         if self._stored.have_nrpe:  # pyright: ignore
@@ -655,7 +610,12 @@ class COSProxyCharm(CharmBase):
         self._stored.have_prometheus = False
 
     def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
-        """Send NRPE jobs over to MetricsEndpointAggregator."""
+        """When NRPE targets change, recalculate alert rules and scrape configs.
+
+        This method updates the stored state and relation data downstream relations join
+        (e.g. cos-agent, prometheus, etc.). It recalculates all the data sources and passes it to
+        stored state.
+        """
         if event and isinstance(event, NrpeTargetsChangedEvent):
             for target in event.removed_targets:
                 self.metrics_aggregator.remove_prometheus_jobs(target)  # type: ignore

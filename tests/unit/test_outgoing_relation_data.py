@@ -2,7 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Mapping, Set
 from unittest.mock import patch
 
 from ops.testing import Harness
@@ -42,6 +42,34 @@ class TestRelationMonitors(unittest.TestCase):
             "private-address": "10.181.49.93",
         }
 
+        self.default_rules_unit_data = {
+            "egress-subnets": "10.181.49.93/32",
+            "ingress-address": "10.181.49.93",
+            "private-address": "10.181.49.93",
+            "groups": """[
+                {
+                    "alert": "CPU_Usage",
+                    "expr": 'cpu_usage_idle{is_container!="True", group="promoagents-juju"} < 10',
+                    "for": "5m",
+                    "labels": {"override_group_by": "host", "severity": "page", "cloud": "juju"},
+                    "annotations": {
+                        "description": "Host {{ $labels.host }} has had <  10% idle cpu for the last 5m\n",
+                        "summary": "Host {{ $labels.host }} CPU free is less than 10%",
+                    },
+                },
+                {
+                    "alert": "DiskFull",
+                    "expr": 'disk_free{is_container!="True", fstype!~".*tmpfs|squashfs|overlay"} <1024',
+                    "for": "5m",
+                    "labels": {"override_group_by": "host", "severity": "page"},
+                    "annotations": {
+                        "description": "Host {{ $labels.host }} {{ $labels.path }} is full\n",
+                        "summary": "Host {{ $labels.host }} {{ $labels.path }} is full",
+                    },
+                },
+            ]""",
+        }
+
         for p in [
             patch("charm.remove_package"),
             patch.object(COSProxyCharm, "_setup_nrpe_exporter"),
@@ -62,7 +90,28 @@ class TestRelationMonitors(unittest.TestCase):
     def tearDown(self):
         self.mock_enrichment_file.unlink(missing_ok=True)
 
-    def get_app_names_from_scrape_jobs(self, scrape_jobs: Dict[str, Any]) -> Set[str]:
+    def setup_upstream_relations(self) -> Dict[str, int]:
+        # GIVEN the following upstream relations exist
+        rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
+        rel_id_target = self.harness.add_relation("prometheus-target", "telegraf")
+        rel_id_rules = self.harness.add_relation("prometheus-rules", "telegraf")
+        self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
+        self.harness.add_relation_unit(rel_id_target, "telegraf/0")
+        self.harness.add_relation_unit(rel_id_rules, "telegraf/0")
+
+        # WHEN they populate their relation data
+        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_monitors_unit_data)
+        self.harness.update_relation_data(
+            rel_id_target, "telegraf/0", self.default_target_unit_data
+        )
+        self.harness.update_relation_data(rel_id_rules, "telegraf/0", self.default_rules_unit_data)
+        return {
+            "nrpe": rel_id_nrpe,
+            "target": rel_id_target,
+            "rules": rel_id_rules,
+        }
+
+    def get_app_names_from_scrape_jobs(self, scrape_jobs: List[Dict[str, Any]]) -> Set[str]:
         app_names = [
             s.get("labels", {}).get("juju_application")
             for c in scrape_jobs
@@ -93,7 +142,7 @@ class TestRelationMonitors(unittest.TestCase):
         return app_names
 
     def get_jobs_from_app_data(
-        self, outgoing_app: str, app_data: Dict[str, str]
+        self, outgoing_app: str, app_data: Mapping[str, str]
     ) -> List[Dict[str, Any]]:
         assert outgoing_app in ["prom", "agent"]
         assert app_data
@@ -102,20 +151,18 @@ class TestRelationMonitors(unittest.TestCase):
         return json.loads(app_data["scrape_jobs"])
 
     def get_alert_rules_from_app_data(
-        self, outgoing_app: str, app_data: Dict[str, str]
-    ) -> List[Dict[str, Any]]:
+        self, outgoing_app: str, app_data: Mapping[str, str]
+    ) -> Dict[str, Any]:
         assert outgoing_app in ["prom", "agent"]
         assert app_data
         if outgoing_app == "agent":
             return json.loads(app_data["config"])["metrics_alert_rules"]
         return json.loads(app_data["alert_rules"])
 
-    def assert_outgoing_data_on_removal(
-        self, outgoing_apps: Dict[str, int], nrpe_id: int, target_id: int
-    ):
+    def assert_outgoing_data_on_removal(self, outgoing_apps: Dict[str, int], ids: Dict[str, int]):
         """Assert that scrape jobs and alert rules in the outgoing relation's app data.
 
-        Starting with multiple incoming relations over different endpoints, sequentially remove
+        Starting with multiple upstream relations over different endpoints, sequentially remove
         them. For each stage, assertions are made against the app data for expected scrape jobs
         and alert rules existing in the outgoing relation data bags.
         """
@@ -126,94 +173,94 @@ class TestRelationMonitors(unittest.TestCase):
             scrape_jobs = self.get_jobs_from_app_data(app_name, app_data)
             alert_rules = self.get_alert_rules_from_app_data(app_name, app_data)
             # THEN cos-agent has the expected scrape jobs
-            assert {"cos-proxy", "nrpe", "telegraf"} == self.get_app_names_from_scrape_jobs(
-                scrape_jobs
+            self.assertEqual(
+                {"cos-proxy", "nrpe", "telegraf"}, self.get_app_names_from_scrape_jobs(scrape_jobs)
             )
             # AND cos-agent has the expected alert rules
             # NOTE: x1 cos-proxy for vector, x1 cos-proxy for generic alerts
-            assert ["cos-proxy", "cos-proxy", "nrpe"] == self.get_app_names_from_alert_rules(
-                alert_rules
+            self.assertCountEqual(
+                ["cos-proxy", "cos-proxy", "nrpe", "telegraf"],
+                self.get_app_names_from_alert_rules(alert_rules),
             )
 
         # AND WHEN the monitors relation is removed
-        self.harness.remove_relation(nrpe_id)
+        self.harness.remove_relation(ids["nrpe"])
         for app_name, rel_id in outgoing_apps.items():
             app_or_unit = "cos-proxy/0" if app_name == "agent" else "cos-proxy"
             app_data = self.harness.get_relation_data(rel_id, app_or_unit)
             scrape_jobs = self.get_jobs_from_app_data(app_name, app_data)
             alert_rules = self.get_alert_rules_from_app_data(app_name, app_data)
-            # TODO: Get the telegraf alerts as well
             # THEN cos-agent has no more nrpe jobs
-            assert {"telegraf", "cos-proxy"} == self.get_app_names_from_scrape_jobs(scrape_jobs)
+            self.assertEqual(
+                {"telegraf", "cos-proxy"}, self.get_app_names_from_scrape_jobs(scrape_jobs)
+            )
             # AND cos-agent has no more nrpe alert rules
             # NOTE: x1 cos-proxy for vector, x1 cos-proxy for generic alerts
-            assert ["cos-proxy", "cos-proxy"] == self.get_app_names_from_alert_rules(alert_rules)
+            self.assertCountEqual(
+                ["cos-proxy", "cos-proxy", "telegraf"],
+                self.get_app_names_from_alert_rules(alert_rules),
+            )
 
         # AND WHEN the prometheus-target relation is removed
-        self.harness.remove_relation(target_id)
+        self.harness.remove_relation(ids["target"])
         for app_name, rel_id in outgoing_apps.items():
             app_or_unit = "cos-proxy/0" if app_name == "agent" else "cos-proxy"
             app_data = self.harness.get_relation_data(rel_id, app_or_unit)
             scrape_jobs = self.get_jobs_from_app_data(app_name, app_data)
+            alert_rules = self.get_alert_rules_from_app_data(app_name, app_data)
             # THEN cos-agent has no more telegraf jobs
-            assert {"cos-proxy"} == self.get_app_names_from_scrape_jobs(scrape_jobs)
+            self.assertEqual({"cos-proxy"}, self.get_app_names_from_scrape_jobs(scrape_jobs))
             # AND cos-agent has no more telegraf alert rules
             # NOTE: x1 cos-proxy for vector, x1 cos-proxy for generic alerts
-            assert ["cos-proxy", "cos-proxy"] == self.get_app_names_from_alert_rules(alert_rules)
+            self.assertCountEqual(
+                ["cos-proxy", "cos-proxy", "telegraf"],
+                self.get_app_names_from_alert_rules(alert_rules),
+            )
+
+        # AND WHEN the prometheus-rules relation is removed
+        self.harness.remove_relation(ids["rules"])
+        for app_name, rel_id in outgoing_apps.items():
+            app_or_unit = "cos-proxy/0" if app_name == "agent" else "cos-proxy"
+            app_data = self.harness.get_relation_data(rel_id, app_or_unit)
+            scrape_jobs = self.get_jobs_from_app_data(app_name, app_data)
+            alert_rules = self.get_alert_rules_from_app_data(app_name, app_data)
+            # THEN cos-agent has no more telegraf jobs
+            self.assertEqual({"cos-proxy"}, self.get_app_names_from_scrape_jobs(scrape_jobs))
+            # AND cos-agent has no more telegraf alert rules
+            # NOTE: x1 cos-proxy for vector, x1 cos-proxy for generic alerts
+            self.assertCountEqual(
+                ["cos-proxy", "cos-proxy"], self.get_app_names_from_alert_rules(alert_rules)
+            )
 
     def test_only_prometheus(self):
-        # TODO: The first 10 lines are repeated for each test, put this in a conftest or something
-        # GIVEN the "downstream-prometheus-scrape", "monitors", and "prometheus-target" relations exist
+        # GIVEN the downstream "downstream-prometheus-scrape" relation
         rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
-        rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
-        rel_id_target = self.harness.add_relation("prometheus-target", "telegraf")
         self.harness.add_relation_unit(rel_id_prom, "prom/0")
-        self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
-        self.harness.add_relation_unit(rel_id_target, "telegraf/0")
 
-        # WHEN the incoming relations populate their unit data
-        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_monitors_unit_data)
-        self.harness.update_relation_data(
-            rel_id_target, "telegraf/0", self.default_target_unit_data
-        )
+        # WHEN upstream relations
+        upstream_ids = self.setup_upstream_relations()
 
-        self.assert_outgoing_data_on_removal({"prom": rel_id_prom}, rel_id_nrpe, rel_id_target)
+        self.assert_outgoing_data_on_removal({"prom": rel_id_prom}, upstream_ids)
 
     def test_only_cos_agent(self):
-        # GIVEN the "cos-agent", "monitors", and "prometheus-target" relations exist
+        # GIVEN the downstream "cos-agent" relation
         rel_id_agent = self.harness.add_relation("cos-agent", "agent")
-        rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
-        rel_id_target = self.harness.add_relation("prometheus-target", "telegraf")
         self.harness.add_relation_unit(rel_id_agent, "agent/0")
-        self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
-        self.harness.add_relation_unit(rel_id_target, "telegraf/0")
-        # TODO: I need to add a prometheus-rules relation here as well
 
-        # WHEN the incoming relations populate their unit data
-        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_monitors_unit_data)
-        self.harness.update_relation_data(
-            rel_id_target, "telegraf/0", self.default_target_unit_data
-        )
+        # WHEN upstream relations publish to their databags
+        upstream_ids = self.setup_upstream_relations()
 
-        self.assert_outgoing_data_on_removal({"agent": rel_id_agent}, rel_id_nrpe, rel_id_target)
+        self.assert_outgoing_data_on_removal({"agent": rel_id_agent}, upstream_ids)
 
     def test_cos_agent_with_downstream_prometheus(self):
-        # GIVEN the "cos-agent", "downstream-prometheus-scrape", "monitors", and
-        # "prometheus-target" relations exist
+        # GIVEN the downstream "cos-agent" and "downstream-prometheus-scrape" relations
         rel_id_agent = self.harness.add_relation("cos-agent", "agent")
         rel_id_prom = self.harness.add_relation("downstream-prometheus-scrape", "prom")
-        rel_id_nrpe = self.harness.add_relation("monitors", "nrpe")
-        rel_id_target = self.harness.add_relation("prometheus-target", "telegraf")
         self.harness.add_relation_unit(rel_id_agent, "agent/0")
         self.harness.add_relation_unit(rel_id_prom, "prom/0")
-        self.harness.add_relation_unit(rel_id_nrpe, "nrpe/0")
-        self.harness.add_relation_unit(rel_id_target, "telegraf/0")
 
-        # WHEN the incoming relations populate their unit data
-        self.harness.update_relation_data(rel_id_nrpe, "nrpe/0", self.default_monitors_unit_data)
-        self.harness.update_relation_data(
-            rel_id_target, "telegraf/0", self.default_target_unit_data
-        )
+        # WHEN upstream relations publish to their databags
+        upstream_ids = self.setup_upstream_relations()
 
         agent_app_data = self.harness.get_relation_data(rel_id_agent, "cos-proxy/0")
         prom_app_data = self.harness.get_relation_data(rel_id_prom, "cos-proxy")
@@ -225,10 +272,10 @@ class TestRelationMonitors(unittest.TestCase):
         )
 
         # AND "cos-agent" alert rules are identical to those in the "downstream-prometheus-scrape" relation
-        self.assertEqual(
-            json.loads(prom_app_data["alert_rules"]), cos_agent_config["metrics_alert_rules"]
-        )
+        prom_groups = json.loads(prom_app_data["alert_rules"])["groups"]
+        cos_agent_groups = cos_agent_config["metrics_alert_rules"]["groups"]
+        self.assertEqual(prom_groups, cos_agent_groups)
 
         self.assert_outgoing_data_on_removal(
-            {"agent": rel_id_agent, "prom": rel_id_prom}, rel_id_nrpe, rel_id_target
+            {"agent": rel_id_agent, "prom": rel_id_prom}, upstream_ids
         )
