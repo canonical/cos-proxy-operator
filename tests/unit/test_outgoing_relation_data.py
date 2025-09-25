@@ -17,7 +17,7 @@ JUJU_APP = "ubuntu-is-amazing"
 
 class TestRelationMonitors(unittest.TestCase):
     def setUp(self):
-        self.mock_enrichment_file = Path(tempfile.mkstemp())
+        self.mock_enrichment_file = Path(tempfile.mkstemp()[1])
 
         # The unit data below were obtained from the output of:
         # juju show-unit \
