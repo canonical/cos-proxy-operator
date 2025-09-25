@@ -299,6 +299,15 @@ _tracing_receivers_ports = {
 ReceiverProtocol = Literal["otlp_grpc", "otlp_http", "zipkin", "jaeger_thrift_http", "jaeger_grpc"]
 
 
+def _dedupe_list(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deduplicate items in the list via object identity."""
+    unique_items = []
+    for item in items:
+        if item not in unique_items:
+            unique_items.append(item)
+    return unique_items
+
+
 class TracingError(Exception):
     """Base class for custom errors raised by tracing."""
 
@@ -613,8 +622,8 @@ class COSAgentProvider(Object):
         refresh_events: Optional[List] = None,
         tracing_protocols: Optional[List[str]] = None,
         *,
-        scrape_configs: Optional[Union[List[dict], Callable]] = None,
-        alert_groups: Optional[Callable] = None,
+        scrape_configs: Optional[Union[List[dict], Callable[[], List[Dict[str, Any]]]]] = None,
+        extra_alert_groups: Optional[Callable[[], Dict[str, Any]]] = None,
     ):
         """Create a COSAgentProvider instance.
 
@@ -643,7 +652,7 @@ class COSAgentProvider(Object):
         self._relation_name = relation_name
         self._metrics_endpoints = metrics_endpoints or []
         self._scrape_configs = scrape_configs or []
-        self._alert_groups = alert_groups or {}
+        self._extra_alert_groups = extra_alert_groups or {}
         self._metrics_rules = metrics_rules_dir
         self._logs_rules = logs_rules_dir
         self._recursive = recurse_rules_dirs
@@ -714,22 +723,25 @@ class COSAgentProvider(Object):
     @property
     def _metrics_alert_rules(self) -> Dict:
         """Return a dict of alert rule groups."""
-        # Optionally allow the charm to set the metrics_alert_rules
-        if callable(self._alert_groups):
-            return self._alert_groups()
+        # Optionally allow the charm to add the metrics_alert_rules
+        if callable(self._extra_alert_groups):
+            rules = self._extra_alert_groups()
+        else:
+            rules = {"groups": []}
 
-        # TODO: Search "COSAgentProvider(" in **/src/**/*.py for instances of charms using cos-agent
         alert_rules = AlertRules(
             query_type="promql", topology=JujuTopology.from_charm(self._charm)
         )
-        # TODO: The interesting part here is the _metrics_rules dir bc it dynamically writes to src/cos_agent/prometheus_alert_rules
-        # For each related app over prom-rules
         alert_rules.add_path(self._metrics_rules, recursive=self._recursive)
         alert_rules.add(
             generic_alert_groups.application_rules,
             group_name_prefix=JujuTopology.from_charm(self._charm).identifier,
         )
-        return alert_rules.as_dict()
+
+        # NOTE: The charm could supply rules we implement in this method, so we deduplicate
+        rules["groups"] = _dedupe_list(rules["groups"] + alert_rules.as_dict()["groups"])
+
+        return rules
 
     @property
     def _log_alert_rules(self) -> Dict:

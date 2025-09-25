@@ -72,7 +72,6 @@ logger = logging.getLogger(__name__)
 
 DASHBOARDS_DIR = "./src/cos_agent/grafana_dashboards"
 COS_PROXY_DASHBOARDS_DIR = "./src/grafana_dashboards"
-RULES_DIR = "./src/cos_agent/prometheus_alert_rules"
 OWN_RULES_DIR = "./src/prometheus_alert_rules"
 VECTOR_PORT = 9090
 
@@ -181,8 +180,7 @@ class COSProxyCharm(CharmBase):
             # NOTE: we pass a callable to scrape_configs and alert_groups to calculate them within
             # the _on_refresh method rather than in the constructor
             scrape_configs=self._get_stored_scrape_configs,
-            alert_groups=self._get_stored_alert_groups,
-            metrics_rules_dir=RULES_DIR,
+            extra_alert_groups=self._get_stored_alert_groups,
             dashboard_dirs=[COS_PROXY_DASHBOARDS_DIR, DASHBOARDS_DIR],
             refresh_events=[
                 self.on.prometheus_target_relation_changed,
@@ -318,9 +316,9 @@ class COSProxyCharm(CharmBase):
                         json.dump(dashboard, dashboard_file, indent=4)
 
     def _get_stored_scrape_configs(self) -> List[Dict[str, Any]]:
-        """Return the scrape jobs from stored state.
+        """Return the scrape configs from stored state.
 
-        The source of truth for scrape jobs exists in self.metrics_aggregator._stored.jobs
+        The source of truth for scrape configs exists in self.metrics_aggregator._stored.jobs
         and should be updated elsewhere accordingly to populate cos-agent relation data.
         """
         return _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore

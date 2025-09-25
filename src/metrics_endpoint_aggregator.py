@@ -288,7 +288,6 @@ class MetricsEndpointAggregator(Object):
 
             if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
                 self._stored.jobs = jobs
-                # TODO: Check all docstrings
 
     def _on_prometheus_targets_departed(self, event):
         """Remove scrape jobs when a target departs.
