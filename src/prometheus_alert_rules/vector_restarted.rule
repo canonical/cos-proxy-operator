@@ -1,0 +1,12 @@
+# https://vector.dev/docs/reference/configuration/sources/internal_metrics/#uptime_seconds
+alert: VectorRestarted
+expr: vector_uptime_seconds < (vector_uptime_seconds offset 5m)
+for: 0m
+labels:
+  severity: info
+annotations:
+  summary: Vector restarted (instance {{ $labels.instance }})
+  description: |
+    Vector has just been restarted, less than one minute ago on {{ $labels.instance }}. Telemetry loss may have occurred.
+    VALUE = {{ $value }}
+    LABELS = {{ $labels }}

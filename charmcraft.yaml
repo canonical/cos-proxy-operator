@@ -1,0 +1,127 @@
+# Copyright 2021 Canonical
+# See LICENSE file for licensing details.
+name: cos-proxy
+type: charm
+summary: |
+  Single integration point in the machine world with Kubernetes-based COS.
+description: |
+  This Juju machine charm that provides a single integration point in the
+  machine world with Kubernetes-based Canonical Observability Stack.
+
+links:
+  documentation: https://discourse.charmhub.io/t/cos-proxy-operator-docs-index/5611
+
+platforms:
+  ubuntu@20.04:amd64:
+  ubuntu@22.04:amd64:
+
+assumes:
+  - juju >= 3.6
+
+parts:
+  charm:
+    source: .
+    plugin: uv
+    build-packages: [git]
+    build-snaps: [astral-uv]
+    override-build: |
+      craftctl default
+      git describe --always > $CRAFT_PART_INSTALL/version
+  nrpe-exporter:
+    plugin: dump
+    source: .
+    build-packages:
+      - curl
+    override-pull: |
+      if [ $CRAFT_ARCH_BUILD_FOR == "amd64" ]; then
+        URI=https://github.com/canonical/nrpe_exporter/releases/latest/download/nrpe_exporter-amd64
+        curl -L $URI -o nrpe_exporter-amd64
+      elif [ $CRAFT_ARCH_BUILD_FOR == "arm64" ] || [ $CRAFT_ARCH_BUILD_FOR == "aarch64" ]; then
+        URI=https://github.com/canonical/nrpe_exporter/releases/latest/download/nrpe_exporter-arm64
+        curl -L $URI -o nrpe_exporter-aarch64
+      fi
+  vector:
+    plugin: dump
+    source: .
+    build-packages:
+      - curl
+      - tar
+    override-pull: |
+      VERSION=0.44.0
+      if [ $CRAFT_ARCH_BUILD_FOR == "amd64" ]; then
+        ARCH=x86_64-unknown-linux-musl
+      elif [ $CRAFT_ARCH_BUILD_FOR == "arm64" ]; then
+        ARCH=aarch64-unknown-linux-musl
+      fi
+
+      VECTOR_URI="https://packages.timber.io/vector/${VERSION}/vector-${VERSION}-${ARCH}.tar.gz"
+      curl -sSfL ${VECTOR_URI} | tar xzf - -C . --strip-components=3 ./vector-${ARCH}/bin/vector
+
+provides:
+  downstream-grafana-dashboard:
+    interface: grafana_dashboard
+    optional: true
+    description: |
+      Send the gathered Grafana dashboard (and its own) to a charmed Grafana.
+  downstream-prometheus-scrape:
+    interface: prometheus_scrape
+    optional: true
+    description: |
+      Send aggregated scrape jobs and alert rules to a Prometheus.
+  filebeat:
+    interface: elastic-beats
+    optional: true
+  cos-agent:
+    interface: cos_agent
+    optional: true
+    description: |
+      Integration to have the workload's telemetry scraped, also forwarding
+      alerts, scrape jobs, and dashboards to the related COS agent.
+
+requires:
+  dashboards:
+    interface: grafana-dashboard
+    optional: true
+    description: Receive Grafana dashboards from other charms.
+  downstream-logging:
+    interface: loki_push_api
+    optional: true
+  general-info:
+    interface: general-info
+    optional: true
+  monitors:
+    interface: monitors
+    optional: true
+    description: |
+      Receive NRPE target information and its "check_" commands so they can be reformatted into scrape jobs and alert rules.
+  prometheus:
+    interface: prometheus-manual
+    optional: true
+  prometheus-rules:
+    interface: prometheus-rules
+    optional: true
+    description: |
+      Receive alert rules over relation data
+  prometheus-target:
+    interface: http
+    optional: true
+    description: |
+      Receive host and port information so the remote host can be scraped via scrape jobs.
+
+config:
+  options:
+    forward_alert_rules:
+      description: >
+        Toggle forwarding of alert rules.
+      type: boolean
+      default: true
+    nrpe_alert_on_warning:
+      description: |
+        Enable alerting on NRPE warnings 
+
+        When true, the expression changes from `round(avg_over_time(command_status) > 1` to `round(avg_over_time(command_status) >= 1` and alerts will still be labelled as `severity: warning`.
+        From the NRPE severity calculation, `1` means warning and `2` means critical.
+
+        Warning: some users may have dynamic alerting (e.g. in PagerDuty) and these would warnings could flood notifications.
+      type: boolean
+      default: false
