@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import scenario
 
 from charm import COSProxyCharm
-from lib.charms.prometheus_k8s.v0.prometheus_scrape import _dedupe_list
+from metrics_endpoint_aggregator import _dedupe_list
 
 RELABEL_INSTANCE_CONFIG = {
     "source_labels": [

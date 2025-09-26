@@ -13,7 +13,7 @@ of relations which will be checked for `monitor` data to configure
 Prometheus jobs.
 
 The parent charm should also provide an instantiated
-`MetricsEndpointAggregator`, so events sent from this library can be
+`MetricsEndpointAggregator`, so events sent from this object can be
 consumed and sent through the Prometheus relation, by responding to
 `NrpeTargetsChangedEvent`.
 
@@ -37,10 +37,10 @@ from ops.framework import (
     EventSource,
     Object,
     ObjectEvents,
-    StoredDict,
-    StoredList,
     StoredState,
 )
+
+from metrics_endpoint_aggregator import _type_convert_stored
 
 # The unique Charmhub library identifier, never change it
 LIBID = "0xdeadbeef"
@@ -166,18 +166,6 @@ def _validate_relation_by_interface_and_direction(
             )
     else:
         raise Exception("Unexpected RelationDirection: {}".format(expected_relation_role))
-
-
-def _type_convert_stored(obj):
-    """Convert Stored* to their appropriate types, recursively."""
-    if isinstance(obj, StoredList):
-        return list(map(_type_convert_stored, obj))
-    if isinstance(obj, StoredDict):
-        rdict: Dict[Any, Any] = {}
-        for k in obj.keys():
-            rdict[k] = _type_convert_stored(obj[k])
-        return rdict
-    return obj
 
 
 def find_key(d: dict, key: str) -> Any:

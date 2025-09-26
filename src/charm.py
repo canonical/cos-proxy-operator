@@ -42,7 +42,6 @@ from csv import DictReader, DictWriter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
-import yaml
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.operator_libs_linux.v0.apt import remove_package
@@ -53,29 +52,26 @@ from charms.operator_libs_linux.v1.systemd import (
     service_running,
     service_stop,
 )
-from charms.prometheus_k8s.v0.prometheus_scrape import (
-    MetricsEndpointAggregator,
-    _type_convert_stored,
-)
 from cosl import MandatoryRelationPairs
-from interfaces.prometheus_scrape.v0.schema import AlertGroupModel, AlertRulesModel, ScrapeJobModel
-from ops import RelationBrokenEvent, RelationChangedEvent
+from ops import RelationChangedEvent
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus
 
+from metrics_endpoint_aggregator import MetricsEndpointAggregator, _type_convert_stored
 from nrpe_exporter import (
     NrpeExporterProvider,
     NrpeTargetsChangedEvent,
 )
+from scrape_config import ScrapeConfig
 from vector import VectorProvider
 
 logger = logging.getLogger(__name__)
 
 DASHBOARDS_DIR = "./src/cos_agent/grafana_dashboards"
 COS_PROXY_DASHBOARDS_DIR = "./src/grafana_dashboards"
-RULES_DIR = "./src/cos_agent/prometheus_alert_rules"
+OWN_RULES_DIR = "./src/prometheus_alert_rules"
 VECTOR_PORT = 9090
 
 
@@ -164,22 +160,35 @@ class COSProxyCharm(CharmBase):
             self._downstream_grafana_dashboard_relation_broken,
         )
 
+        self._scrape_config = ScrapeConfig(
+            self.model.name, self.model.uuid, resolve_addresses=True
+        )
         self.metrics_aggregator = MetricsEndpointAggregator(
             self,
             resolve_addresses=True,
             forward_alert_rules=cast(bool, self.config["forward_alert_rules"]),
-            path_to_own_alert_rules="./src/prometheus_alert_rules",
+            path_to_own_alert_rules=OWN_RULES_DIR,
+        )
+        self.nrpe_exporter = NrpeExporterProvider(self)
+        self.framework.observe(
+            self.nrpe_exporter.on.nrpe_targets_changed,  # pyright: ignore
+            self._on_nrpe_targets_changed,
         )
         self.cos_agent = COSAgentProvider(
             self,
-            scrape_configs=self._get_scrape_configs(),
-            metrics_rules_dir=RULES_DIR,
+            # NOTE: we pass a callable to scrape_configs and alert_groups to calculate them within
+            # the _on_refresh method rather than in the constructor
+            scrape_configs=self._get_stored_scrape_configs,
+            extra_alert_groups=self._get_stored_alert_groups,
             dashboard_dirs=[COS_PROXY_DASHBOARDS_DIR, DASHBOARDS_DIR],
             refresh_events=[
                 self.on.prometheus_target_relation_changed,
                 self.on.prometheus_target_relation_broken,
+                self.on.prometheus_rules_relation_changed,
+                self.on.prometheus_rules_relation_broken,
                 self.on.dashboards_relation_changed,
                 self.on.dashboards_relation_broken,
+                self.nrpe_exporter.on.nrpe_targets_changed,
             ],
         )
 
@@ -191,12 +200,6 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(
             self.on.cos_agent_relation_broken,  # pyright: ignore
             self._on_cos_agent_relation_broken,
-        )
-
-        self.nrpe_exporter = NrpeExporterProvider(self)
-        self.framework.observe(
-            self.nrpe_exporter.on.nrpe_targets_changed,  # pyright: ignore
-            self._on_nrpe_targets_changed,
         )
 
         self.vector = VectorProvider(self)
@@ -222,10 +225,6 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(
             self.on.prometheus_target_relation_joined,  # pyright: ignore
             self._prometheus_target_relation_joined,
-        )
-        self.framework.observe(
-            self.on.prometheus_target_relation_changed,  # pyright: ignore
-            self._prometheus_target_relation_changed,
         )
         self.framework.observe(
             self.on.prometheus_target_relation_broken,  # pyright: ignore
@@ -283,13 +282,12 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(self.on.stop, self._on_stop)
         self.framework.observe(self.on.collect_unit_status, self._set_status)
 
-        self.framework.observe(self.on.config_changed, self._update_alerts)
-
-    def _update_alerts(self, event):
-        self.metrics_aggregator._set_prometheus_data()
+        # NOTE: Config option "forward_alert_rules" conditionally changes the databag
+        self.framework.observe(self.on.config_changed, self.metrics_aggregator.update_alerts)
 
     def _on_cos_agent_relation_joined(self, _):
         self._stored.have_gagent = True
+        self.metrics_aggregator.update_alerts()
 
     def _on_cos_agent_relation_broken(self, _):
         self._stored.have_gagent = False
@@ -316,54 +314,21 @@ class COSProxyCharm(CharmBase):
                     with open(dashboard_file_path, "w") as dashboard_file:
                         json.dump(dashboard, dashboard_file, indent=4)
 
-    def _get_scrape_configs(self):
-        """Return the scrape jobs."""
-        jobs = []
-        stored_jobs = _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore
-        if stored_jobs:
-            for job_data in stored_jobs:
-                stored_jobs_model = ScrapeJobModel(**job_data)  # pyright: ignore
-                jobs.append(stored_jobs_model.model_dump())
+    def _get_stored_scrape_configs(self) -> List[Dict[str, Any]]:
+        """Return the scrape configs from stored state.
 
-        for relation in self.model.relations[self.metrics_aggregator._target_relation]:
-            targets = self.metrics_aggregator._get_targets(relation)
-            if targets and relation.app:
-                target_job_data = self.metrics_aggregator._static_scrape_job(
-                    targets, relation.app.name
-                )
-                target_job = ScrapeJobModel(**target_job_data)
-                jobs.append(target_job.model_dump())
-        return jobs
+        The source of truth for scrape configs exists in self.metrics_aggregator._stored.jobs
+        and should be updated elsewhere accordingly to populate cos-agent relation data.
+        """
+        return _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore
 
-    def _get_alert_groups(self) -> AlertRulesModel:
-        """Return the alert rules groups."""
-        alert_rules_model = AlertRulesModel(groups=[])
-        stored_rules = _type_convert_stored(self.metrics_aggregator._stored.alert_rules)  # pyright: ignore
-        if stored_rules:
-            for rule_data in stored_rules:
-                stored_rules_model = AlertGroupModel(**rule_data)  # pyright: ignore
-                alert_rules_model.groups.append(stored_rules_model)
+    def _get_stored_alert_groups(self) -> Dict[str, Any]:
+        """Return the alert rules from stored state.
 
-        for relation in self.model.relations[self.metrics_aggregator._alert_rules_relation]:
-            unit_rules = self.metrics_aggregator._get_alert_rules(relation)
-            if unit_rules and relation.app:
-                appname = relation.app.name
-                rules = self.metrics_aggregator._label_alert_rules(unit_rules, appname)
-                group_name = self.metrics_aggregator.group_name(appname)
-                group = AlertGroupModel(name=group_name, rules=rules)
-                alert_rules_model.groups.append(group)
-
-        return alert_rules_model
-
-    def _handle_prometheus_alert_rule_files(self, rules_dir: str, app_name: str):
-        groups = self._get_alert_groups()
-
-        directory = Path(rules_dir)
-        directory.mkdir(parents=True, exist_ok=True)
-        alert_rules_file_path = directory / f"{app_name}-rules.yaml"
-
-        with open(alert_rules_file_path, "w") as alert_rules_file:
-            yaml.dump(groups.model_dump(), alert_rules_file, default_flow_style=False)
+        The source of truth for alert rules exists in self.metrics_aggregator._stored.alert_rules
+        and should be updated elsewhere accordingly to populate cos-agent relation data.
+        """
+        return {"groups":_type_convert_stored(self.metrics_aggregator._stored.alert_rules)}  # pyright: ignore
 
     def _dashboards_relation_joined(self, _):
         self._stored.have_dashboards = True
@@ -375,7 +340,7 @@ class COSProxyCharm(CharmBase):
         self._stored.have_dashboards = False
         self._delete_existing_dashboard_files(DASHBOARDS_DIR)
 
-    def _prometheus_rules_relation_joined(self, _):
+    def _prometheus_rules_relation_joined(self, event: RelationChangedEvent):
         self._stored.have_prometheus_rules = True
 
     def _prometheus_rules_relation_broken(self, _):
@@ -630,12 +595,8 @@ class COSProxyCharm(CharmBase):
     def _prometheus_target_relation_joined(self, _):
         self._stored.have_targets = True
 
-    def _prometheus_target_relation_changed(self, event: RelationChangedEvent):
-        self._handle_prometheus_alert_rule_files(RULES_DIR, event.app.name)
-
-    def _prometheus_target_relation_broken(self, event: RelationBrokenEvent):
+    def _prometheus_target_relation_broken(self, _):
         self._stored.have_targets = False
-        self._handle_prometheus_alert_rule_files(RULES_DIR, event.app.name)
 
     def _downstream_prometheus_scrape_relation_joined(self, _):
         if self._stored.have_nrpe:  # pyright: ignore
@@ -646,17 +607,20 @@ class COSProxyCharm(CharmBase):
         self._stored.have_prometheus = False
 
     def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
-        """Send NRPE jobs over to MetricsEndpointAggregator."""
-        if event and isinstance(event, NrpeTargetsChangedEvent):
-            removed_targets = event.removed_targets
-            for r in removed_targets:
-                self.metrics_aggregator.remove_prometheus_jobs(r)  # type: ignore
+        """When NRPE targets change, recalculate alert rules and scrape configs.
 
-            removed_alerts = event.removed_alerts
-            for a in removed_alerts:
+        This method updates the stored state and relation data downstream relations join
+        (e.g. cos-agent, prometheus, etc.). It recalculates all the data sources and passes it to
+        stored state.
+        """
+        if event and isinstance(event, NrpeTargetsChangedEvent):
+            for target in event.removed_targets:
+                self.metrics_aggregator.remove_prometheus_jobs(target)  # type: ignore
+
+            for alert in event.removed_alerts:
                 self.metrics_aggregator.remove_alert_rules(
-                    self.metrics_aggregator.group_name(a["labels"]["juju_unit"]),  # type: ignore
-                    a["labels"]["juju_unit"],  # type: ignore
+                    self.metrics_aggregator.group_name(alert["labels"]["juju_unit"]),  # type: ignore
+                    alert["labels"]["juju_unit"],  # type: ignore
                 )
 
             nrpes = cast(List[Dict[str, Any]], event.current_targets)
@@ -668,14 +632,15 @@ class COSProxyCharm(CharmBase):
 
         self._modify_enrichment_file(endpoints=nrpes)
 
+        # Add scrape jobs for prometheus and cos-agent relations
         for nrpe in nrpes:
             self.metrics_aggregator.set_target_job_data(
                 nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
             )
-
-        # Add vector scrape job
-        target = {self.unit.name: {"hostname": self.host, "port": VECTOR_PORT}}
-        self.metrics_aggregator.set_target_job_data(target, self.app.name)
+        # NOTE: We never stop vector once started, so we assume that within an NRPE event, the
+        #       vector target can be scraped in the future
+        vector_target = {self.unit.name: {"hostname": self.host, "port": VECTOR_PORT}}
+        self.metrics_aggregator.set_target_job_data(vector_target, self.app.name)
 
         for alert in current_alerts:
             self.metrics_aggregator.set_alert_rule_data(
@@ -735,6 +700,7 @@ class COSProxyCharm(CharmBase):
     def host(self) -> str:
         """Unit's ip address."""
         return socket.gethostbyname(self.hostname)
+
 
 
 if __name__ == "__main__":  # pragma: no cover
