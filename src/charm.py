@@ -52,7 +52,6 @@ from charms.operator_libs_linux.v1.systemd import (
     service_running,
     service_stop,
 )
-from charms.prometheus_k8s.v0.prometheus_scrape import _type_convert_stored
 from cosl import MandatoryRelationPairs
 from ops import RelationChangedEvent
 from ops.charm import CharmBase
@@ -60,7 +59,7 @@ from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, BlockedStatus
 
-from metrics_endpoint_aggregator import MetricsEndpointAggregator
+from metrics_endpoint_aggregator import MetricsEndpointAggregator, _type_convert_stored
 from nrpe_exporter import (
     NrpeExporterProvider,
     NrpeTargetsChangedEvent,
@@ -283,7 +282,7 @@ class COSProxyCharm(CharmBase):
         self.framework.observe(self.on.stop, self._on_stop)
         self.framework.observe(self.on.collect_unit_status, self._set_status)
 
-        # NOTE: We need this because "forward_alert_rules" conditionally changes the databag
+        # NOTE: Config option "forward_alert_rules" conditionally changes the databag
         self.framework.observe(self.on.config_changed, self.metrics_aggregator.update_alerts)
 
     def _on_cos_agent_relation_joined(self, _):

@@ -8,19 +8,38 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 import yaml
-from charms.prometheus_k8s.v0.prometheus_scrape import _type_convert_stored
 from cosl import JujuTopology
 from cosl.rules import AlertRules, generic_alert_groups
 from ops.charm import RelationJoinedEvent
-from ops.framework import Object, StoredState
+from ops.framework import (
+    Object,
+    StoredDict,
+    StoredList,
+    StoredState,
+)
 
 from scrape_config import ScrapeConfig
 
 logger = logging.getLogger(__name__)
 
 
+def _type_convert_stored(obj):
+    """Convert Stored* to their appropriate types, recursively."""
+    if isinstance(obj, StoredList):
+        return list(map(_type_convert_stored, obj))
+    if isinstance(obj, StoredDict):
+        rdict = {}  # type: Dict[Any, Any]
+        for k in obj.keys():
+            rdict[k] = _type_convert_stored(obj[k])
+        return rdict
+    return obj
+
+
 class MetricsEndpointAggregator(Object):
     """Aggregate metrics from multiple scrape targets.
+
+    NOTE: This class was moved from charms.prometheus_k8s.v0.prometheus_scrape
+          LIBID = "bc84295fef5f4049878f07b131968ee2"
 
     `MetricsEndpointAggregator` collects scrape target information from one
     or more related charms and forwards this to a `MetricsEndpointConsumer`
@@ -283,7 +302,7 @@ class MetricsEndpointAggregator(Object):
 
         for relation in self.model.relations[self._prometheus_relation]:
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
-            jobs = scrape_job_context.get_jobs(jobs)
+            jobs = scrape_job_context.get_updated_jobs(jobs)
             relation.data[self._charm.app]["scrape_jobs"] = json.dumps(jobs)
 
             if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
@@ -324,7 +343,7 @@ class MetricsEndpointAggregator(Object):
 
                 # Scrape configs
                 if scrape_job_context is not None:
-                    jobs = scrape_job_context.get_jobs(config.get("metrics_scrape_jobs", []))
+                    jobs = scrape_job_context.get_updated_jobs(config.get("metrics_scrape_jobs", []))
                     config["metrics_scrape_jobs"] = jobs
                     if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
                         self._stored.jobs = jobs
@@ -332,7 +351,7 @@ class MetricsEndpointAggregator(Object):
                 # Alert rules
                 metrics_alert_rules = config.get("metrics_alert_rules", {})
                 if alert_rule_context is not None:
-                    groups = alert_rule_context.get_groups(metrics_alert_rules)
+                    groups = alert_rule_context.get_updated_groups(metrics_alert_rules)
                 else:
                     groups = metrics_alert_rules.get("groups", [])
                 config["metrics_alert_rules"] = {
@@ -362,7 +381,7 @@ class MetricsEndpointAggregator(Object):
 
         for relation in self.model.relations[self._prometheus_relation]:
             jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
-            jobs = scrape_job_context.get_jobs(jobs)
+            jobs = scrape_job_context.get_updated_jobs(jobs)
             relation.data[self._charm.app]["scrape_jobs"] = json.dumps(jobs)
 
             if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
@@ -434,7 +453,7 @@ class MetricsEndpointAggregator(Object):
         self._update_cos_agent(alert_rule_context=alert_rule_context)
         for relation in self.model.relations[self._prometheus_relation]:
             alert_rules = json.loads(relation.data[self._charm.app].get("alert_rules", "{}"))
-            groups = alert_rule_context.get_groups(alert_rules)
+            groups = alert_rule_context.get_updated_groups(alert_rules)
             relation.data[self._charm.app]["alert_rules"] = json.dumps(
                 {"groups": groups if self._forward_alert_rules else []}
             )
@@ -462,7 +481,7 @@ class MetricsEndpointAggregator(Object):
 
         for relation in self.model.relations[self._prometheus_relation]:
             alert_rules = json.loads(relation.data[self._charm.app].get("alert_rules", "{}"))
-            groups = alert_rule_context.get_groups(alert_rules)
+            groups = alert_rule_context.get_updated_groups(alert_rules)
             relation.data[self._charm.app]["alert_rules"] = json.dumps({"groups": groups})
 
             if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
@@ -552,16 +571,24 @@ def _dedupe_list(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 @dataclass
 class ScrapeJobContext:
-    """Coordinate events for scrape jobs."""
+    """The desired change to the state of scrape jobs.
+
+    Args:
+        removed_job_name: The name of the job which should be removed.
+        removed_unit_name: The unit name can be used to ensure that jobs with similar names are
+            not accidentally removed, as their unit name in static_configs labels will differ. If
+            `removed_job_name` is not defined, there will be no change.
+        updated_job: A unique or existing (with updated static_configs) job.
+    """
 
     removed_job_name: Optional[str] = None
     removed_unit_name: Optional[str] = None
     updated_job: Dict[str, Any] = field(default_factory=dict)
 
-    def get_jobs(self, jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """In the event of scrape job additions, removal, or both, return the resulting list of scrape jobs."""
+    def get_updated_jobs(self, existing_jobs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Return the resulting list of scrape jobs when the desired state has changed."""
         # Add scrape jobs
-        jobs = [job for job in jobs if job["job_name"] != self.updated_job.get("job_name")]
+        jobs = [job for job in existing_jobs if job["job_name"] != self.updated_job.get("job_name")]
         if self.updated_job:
             jobs.append(self.updated_job)
 
@@ -587,14 +614,22 @@ class ScrapeJobContext:
 
 @dataclass
 class AlertRuleContext:
-    """Coordinate events for alert rules."""
+    """The desired change to the state of alert rules.
+
+    Args:
+        removed_group_name: The name of the alert rule group which should be removed.
+        removed_unit_name: The unit name can be used to ensure that alert rule groups with similar
+            names are not accidentally removed, as their unit name in rules labels will differ. If
+            `removed_group_name` is not defined, there will be no change.
+        updated_group: A unique or existing (with updated rules) alert rule group.
+    """
 
     removed_group_name: Optional[str] = None
     removed_unit_name: Optional[str] = None
     updated_group: Dict[str, Any] = field(default_factory=dict)
 
-    def get_groups(self, alert_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """In the event of alert rule additions, removal, or both, return the resulting list of alert rule groups."""
+    def get_updated_groups(self, alert_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Return the resulting list of alert rule groups when the desired state has changed."""
         if not (groups := _dedupe_list(alert_rules.get("groups", []))):
             return groups
 
