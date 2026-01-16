@@ -488,12 +488,7 @@ class NrpeExporterProvider(Object):
                 "description": "Check provided by nrpe_exporter in model {{ $labels.juju_model }} is failing.\n"
                 "Failing check = {{ $labels.command }}\n"
                 "Unit = {{ $labels.juju_unit }}\n"
-                "Value = {{ $value }}\n"
-                "Legend:\n"
-                "  - StatusOK       = 0\n"
-                "  - StatusWarning  = 1\n"
-                "  - StatusCritical = 2\n"
-                "  - StatusUnknown  = 3",
+                "Value = {{ $value }}",
             },
         }
 
