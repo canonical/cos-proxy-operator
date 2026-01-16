@@ -1,133 +1,707 @@
 #!/usr/bin/env python3
-# Copyright 2021 Canonical
-# See LICENSE file for licensing details.
+#  Copyright 2021 Canonical Ltd.
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
 #
 # Learn more at: https://juju.is/docs/sdk
+"""This charm provides an interface between machine/reactive charms and COS charms.
 
-"""Hello, Juju example charm.
+COS is composed of Charmed Operators running in Kubernetes using the Operator Framework
+rather than Charms.Reactive. The purpose of this module is to provide a bridge between
+reactive charms and Charmed Operators to provide observability into both types of
+deployments from a single place -- COS.
 
-This charm is a demonstration of a machine charm written using the Charmed
-Operator Framework. It deploys a simple Python Flask web application and
-implements a relation to the PostgreSQL charm.
+Interfaces from COS should be offered in Juju, and consumed by the appropriate model so
+relations can be established.
+
+Currently supported interfaces are for:
+    * Grafana dashboards
+    * Prometheus scrape targets
+    * NRPE Endpoints
 """
 
+import json
 import logging
+import platform
+import re
+import shutil
+import socket
+import stat
+import textwrap
+from csv import DictReader, DictWriter
+from pathlib import Path
+from typing import Any, Dict, List, Optional, cast
 
+from charms.grafana_agent.v0.cos_agent import COSAgentProvider
+from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
+from charms.operator_libs_linux.v0.apt import remove_package
+from charms.operator_libs_linux.v1.systemd import (
+    daemon_reload,
+    service_restart,
+    service_resume,
+    service_running,
+    service_stop,
+)
+from cosl import MandatoryRelationPairs
+from ops import RelationChangedEvent
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
-from ops.model import ActiveStatus, BlockedStatus, MaintenanceStatus
+from ops.model import ActiveStatus, BlockedStatus
 
-from charms.prometheus_k8s.v0.prometheus import PrometheusConsumer
-
+from metrics_endpoint_aggregator import MetricsEndpointAggregator, _type_convert_stored
+from nrpe_exporter import (
+    NrpeExporterProvider,
+    NrpeTargetsChangedEvent,
+)
+from scrape_config import ScrapeConfig
+from vector import VectorProvider
 
 logger = logging.getLogger(__name__)
 
+DASHBOARDS_DIR = "./src/cos_agent/grafana_dashboards"
+COS_PROXY_DASHBOARDS_DIR = "./src/grafana_dashboards"
+OWN_RULES_DIR = "./src/prometheus_alert_rules"
+VECTOR_PORT = 9090
 
-class LMAProxyCharm(CharmBase):
+
+class COSProxyCharm(CharmBase):
+    """This class instantiates Charmed Operator libraries and sets the status of the charm.
+
+    No actual work is performed by the charm payload. It is only the libraries which are
+    expected to listen on relations, respond to relation events, and set outgoing relation
+    data.
+    """
 
     _stored = StoredState()
+
+    # The collection of all potential incoming relations
+    relation_pairs = {
+        "dashboards": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-grafana-dashboard"},
+        ],
+        "filebeat": [  # must be paired with:
+            {"downstream-logging"},
+        ],
+        "monitors": [  # (nrpe) must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "general-info": [  # (nrpe) must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "prometheus-target": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "prometheus-rules": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+        "prometheus": [  # must be paired with:
+            {"cos-agent"},  # or
+            {"downstream-prometheus-scrape"},
+        ],
+    }
 
     def __init__(self, *args):
         super().__init__(*args)
 
-        self._stored.set_default(scrape_jobs=[])
+        self._stored.set_default(
+            have_grafana=False,
+            have_dashboards=False,
+            have_prometheus=False,
+            have_targets=False,
+            have_nrpe=False,
+            have_general_info_nrpe=False,
+            have_loki=False,
+            have_filebeat=False,
+            have_gagent=False,
+            have_prometheus_rules=False,
+            have_prometheus_manual=False,
+        )
+
+        self._dashboard_aggregator = GrafanaDashboardAggregator(self)
 
         self.framework.observe(
-            self.on.prometheus_target_relation_joined,
-            self._on_prometheus_target_relation_changed,
-        )
-        self.framework.observe(
-            self.on.prometheus_target_relation_changed,
-            self._on_prometheus_target_relation_changed,
-        )
-        self.framework.observe(
-            self.on.prometheus_target_relation_broken,
-            self._on_prometheus_target_relation_changed,
+            self.on.dashboards_relation_joined,  # pyright: ignore
+            self._dashboards_relation_joined,
         )
 
-        # The PrometheusConsumer takes care of all the handling
-        # of the "upstream-prometheus-scrape" relation
-        self.prometheus = PrometheusConsumer(
+        self.framework.observe(
+            self.on.dashboards_relation_changed,  # pyright: ignore
+            self._dashboards_relation_changed,
+        )
+
+        self.framework.observe(
+            self.on.dashboards_relation_broken,  # pyright: ignore
+            self._dashboards_relation_broken,
+        )
+
+        self.framework.observe(
+            self.on.downstream_grafana_dashboard_relation_joined,  # pyright: ignore
+            self._downstream_grafana_dashboard_relation_joined,
+        )
+
+        self.framework.observe(
+            self.on.downstream_grafana_dashboard_relation_broken,  # pyright: ignore
+            self._downstream_grafana_dashboard_relation_broken,
+        )
+
+        self._scrape_config = ScrapeConfig(
+            self.model.name, self.model.uuid, resolve_addresses=True
+        )
+        self.metrics_aggregator = MetricsEndpointAggregator(
             self,
-            "upstream-prometheus-scrape",
-            {"prometheus": ">=2.0"},
-            self.on.start,
-            jobs=self._stored.scrape_jobs
+            resolve_addresses=True,
+            forward_alert_rules=cast(bool, self.config["forward_alert_rules"]),
+            path_to_own_alert_rules=OWN_RULES_DIR,
+        )
+        self.nrpe_exporter = NrpeExporterProvider(self)
+        self.framework.observe(
+            self.nrpe_exporter.on.nrpe_targets_changed,  # pyright: ignore
+            self._on_nrpe_targets_changed,
+        )
+        self.cos_agent = COSAgentProvider(
+            self,
+            # NOTE: we pass a callable to scrape_configs and alert_groups to calculate them within
+            # the _on_refresh method rather than in the constructor
+            scrape_configs=self._get_stored_scrape_configs,
+            extra_alert_groups=self._get_stored_alert_groups,
+            dashboard_dirs=[COS_PROXY_DASHBOARDS_DIR, DASHBOARDS_DIR],
+            refresh_events=[
+                self.on.prometheus_target_relation_changed,
+                self.on.prometheus_target_relation_broken,
+                self.on.prometheus_rules_relation_changed,
+                self.on.prometheus_rules_relation_broken,
+                self.on.dashboards_relation_changed,
+                self.on.dashboards_relation_broken,
+                self.nrpe_exporter.on.nrpe_targets_changed,
+            ],
         )
 
-    def _on_prometheus_target_relation_changed(self, event):
-        """Iterate all the existing prometheus_scrape relations
-        and regenerate the list of jobs
+        self.framework.observe(
+            self.on.cos_agent_relation_joined,  # pyright: ignore
+            self._on_cos_agent_relation_joined,
+        )
+
+        self.framework.observe(
+            self.on.cos_agent_relation_broken,  # pyright: ignore
+            self._on_cos_agent_relation_broken,
+        )
+
+        self.vector = VectorProvider(self)
+        self.framework.observe(
+            self.on.filebeat_relation_joined,
+            self._on_filebeat_relation_joined,  # pyright: ignore
+        )
+        self.framework.observe(
+            self.vector.on.config_changed,
+            self._write_vector_config,  # pyright: ignore
+        )
+
+        self.framework.observe(
+            self.on.downstream_logging_relation_joined,  # pyright: ignore
+            self._downstream_logging_relation_joined,
+        )
+
+        self.framework.observe(
+            self.on.downstream_logging_relation_broken,  # pyright: ignore
+            self._downstream_logging_relation_broken,
+        )
+
+        self.framework.observe(
+            self.on.prometheus_target_relation_joined,  # pyright: ignore
+            self._prometheus_target_relation_joined,
+        )
+        self.framework.observe(
+            self.on.prometheus_target_relation_broken,  # pyright: ignore
+            self._prometheus_target_relation_broken,
+        )
+
+        self.framework.observe(
+            self.on.downstream_prometheus_scrape_relation_joined,  # pyright: ignore
+            self._downstream_prometheus_scrape_relation_joined,
+        )
+        self.framework.observe(
+            self.on.downstream_prometheus_scrape_relation_broken,  # pyright: ignore
+            self._downstream_prometheus_scrape_relation_broken,
+        )
+
+        self.framework.observe(
+            self.on.monitors_relation_joined,
+            self._nrpe_relation_joined,  # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.monitors_relation_broken,
+            self._nrpe_relation_broken,  # pyright: ignore
+        )
+
+        self.framework.observe(
+            self.on.general_info_relation_joined,
+            self._general_info_relation_joined,  # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.general_info_relation_broken,
+            self._general_info_relation_broken,  # pyright: ignore
+        )
+
+        self.framework.observe(
+            self.on.prometheus_rules_relation_joined,
+            self._prometheus_rules_relation_joined,  # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.prometheus_rules_relation_broken,
+            self._prometheus_rules_relation_broken,  # pyright: ignore
+        )
+
+        self.framework.observe(
+            self.on.prometheus_relation_joined,
+            self._prometheus_manual_relation_joined,
+            # pyright: ignore
+        )
+        self.framework.observe(
+            self.on.prometheus_relation_broken,
+            self._prometheus_manual_relation_broken,
+            # pyright: ignore
+        )
+
+        self.framework.observe(self.on.install, self._on_install)
+        self.framework.observe(self.on.stop, self._on_stop)
+        self.framework.observe(self.on.collect_unit_status, self._set_status)
+
+        # NOTE: Config option "forward_alert_rules" conditionally changes the databag
+        self.framework.observe(self.on.config_changed, self.metrics_aggregator.update_alerts)
+
+    def _on_cos_agent_relation_joined(self, _):
+        self._stored.have_gagent = True
+        self.metrics_aggregator.update_alerts()
+
+    def _on_cos_agent_relation_broken(self, _):
+        self._stored.have_gagent = False
+
+    def _delete_existing_dashboard_files(self, dashboards_dir: str):
+        directory = Path(dashboards_dir)
+        if directory.exists():
+            for file_path in directory.glob("request_*.json"):
+                file_path.unlink()
+
+    def _create_dashboard_files(self, dashboards_dir: str):
+        dashboards_rel = self._dashboard_aggregator._target_relation
+
+        directory = Path(dashboards_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+
+        for relation in self.model.relations[dashboards_rel]:
+            for k in relation.data[self.unit].keys():
+                if k.startswith("request_"):
+                    dashboard = json.loads(relation.data[self.unit][k])["dashboard"]  # type: ignore
+                    dashboard_file_path = (
+                        directory / f"request_{k}.json"
+                    )  # Using the key as filename
+                    with open(dashboard_file_path, "w") as dashboard_file:
+                        json.dump(dashboard, dashboard_file, indent=4)
+
+    def _get_stored_scrape_configs(self) -> List[Dict[str, Any]]:
+        """Return the scrape configs from stored state.
+
+        The source of truth for scrape configs exists in self.metrics_aggregator._stored.jobs
+        and should be updated elsewhere accordingly to populate cos-agent relation data.
         """
+        return _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore
 
-        self.unit.status = MaintenanceStatus("Updating Prometheus scrape jobs")
+    def _get_stored_alert_groups(self) -> Dict[str, Any]:
+        """Return the alert rules from stored state.
 
-        if "prometheus-target" in self.model.relations.keys():
-            scrape_jobs = []
-
-            for target_relation in self.model.relations["prometheus-target"]:
-                # One static config per unit, as we need to specify
-                # the entire Juju topology manually
-                juju_model = self.model.name
-                juju_model_uuid = self.model.uuid
-                juju_application = target_relation.app.name
-
-                scrape_jobs.extend(
-                    [
-                        {
-                            "job_name": "juju_{}_{}_{}_prometheus_scrape".format(
-                                juju_model,
-                                juju_model_uuid[:7],
-                                unit.name,
-                            ),
-                            "static_configs": {
-                                "targets": [
-                                    "{}:{}".format(
-                                        target_relation.data[unit].get("hostname"),
-                                        target_relation.data[unit].get("port")
-                                    )
-                                ],
-                                "labels": {
-                                    "juju_model": juju_model,
-                                    "juju_model_uuid": juju_model_uuid,
-                                    "juju_application": juju_application,
-                                    "juju_unit": unit.name
-                                }
-                            },
-                        }
-                        for unit in target_relation.units
-                        if unit.app is not self.app
-                    ]
-                )
-
-            self._stored.scrape_jobs = scrape_jobs
-        else:
-            self._stored.scrape_jobs = []
-
-        # Set the charm to blocked if there is no upstream to send
-        self._check_needed_upstream_exists()
-
-    def _check_needed_upstream_exists(self):
-        """Set the charm to blocked if there is no upstream of the
-        right type available
+        The source of truth for alert rules exists in self.metrics_aggregator._stored.alert_rules
+        and should be updated elsewhere accordingly to populate cos-agent relation data.
         """
+        return {"groups":_type_convert_stored(self.metrics_aggregator._stored.alert_rules)}  # pyright: ignore
 
-        missing_upstreams = []
+    def _dashboards_relation_joined(self, _):
+        self._stored.have_dashboards = True
 
-        if self._stored.scrape_jobs:
-            if not self.model.relations["upstream-prometheus-scrape"]:
-                missing_upstreams.append("upstream-prometheus-scrape")
+    def _dashboards_relation_changed(self, _):
+        self._create_dashboard_files(DASHBOARDS_DIR)
 
-        if missing_upstreams:
-            self.unit.status = BlockedStatus(
-                "Missing needed upstream relations: {}".format(
-                    ", ".join(missing_upstreams)
-                )
+    def _dashboards_relation_broken(self, _):
+        self._stored.have_dashboards = False
+        self._delete_existing_dashboard_files(DASHBOARDS_DIR)
+
+    def _prometheus_rules_relation_joined(self, event: RelationChangedEvent):
+        self._stored.have_prometheus_rules = True
+
+    def _prometheus_rules_relation_broken(self, _):
+        self._stored.have_prometheus_rules = False
+
+    def _prometheus_manual_relation_joined(self, _):
+        self._stored.have_prometheus_manual = True
+
+    def _prometheus_manual_relation_broken(self, _):
+        self._stored.have_prometheus_manual = False
+
+    def _on_install(self, _):
+        """Initial charm setup."""
+        # Cull out rsyslog so the disk doesn't fill up, and we don't use it for anything, so we
+        # don't need to install/setup logrotate
+        remove_package("rsyslog")
+        self.unit.set_workload_version("n/a")
+
+    def _on_stop(self, _):
+        """Ensure that nrpe exporter is removed and stopped."""
+        if service_running("nrpe-exporter"):
+            service_stop("nrpe-exporter")
+
+        files = ["/usr/local/bin/nrpe-exporter", "/etc/systemd/systemd/nrpe-exporter.service"]
+
+        for f in files:
+            if Path(f).exists():
+                Path(f).unlink()
+
+    def _nrpe_relation_joined(self, _):
+        self._setup_nrpe_exporter()
+        self._start_vector()
+        self._stored.have_nrpe = True
+
+    def _general_info_relation_joined(self, _):
+        self._setup_nrpe_exporter()
+        self._start_vector()
+        self._stored.have_general_info_nrpe = True
+
+    def _setup_nrpe_exporter(self):
+        # Make sure the exporter binary is present with a systemd service
+        if not Path("/usr/local/bin/nrpe-exporter").exists():
+            arch = platform.machine()
+
+            # Machine names vary. Here we follow Ubuntu's convention of "amd64" and "aarch64".
+            # https://stackoverflow.com/a/45124927/3516684
+            # https://en.wikipedia.org/wiki/Uname
+            if arch in ["x86_64", "amd64"]:
+                arch = "amd64"
+            elif arch in ["aarch64", "arm64", "armv8b", "armv8l"]:
+                arch = "aarch64"
+            # else: keep arch as is
+
+            res = "nrpe_exporter-{}".format(arch)
+
+            st = Path(res)
+            st.chmod(st.stat().st_mode | stat.S_IEXEC)
+            shutil.copy(str(st.absolute()), "/usr/local/bin/nrpe-exporter")
+
+            systemd_template = textwrap.dedent(
+                """
+                [Unit]
+                Description=NRPE Prometheus exporter
+                Wants=network-online.target
+                After=network-online.target
+
+                [Service]
+                LimitNPROC=infinity
+                LimitNOFILE=infinity
+                ExecStart=/usr/local/bin/nrpe-exporter
+                Restart=always
+
+                [Install]
+                WantedBy=multi-user.target
+                """
             )
+
+            with open("/etc/systemd/system/nrpe-exporter.service", "w") as f:
+                f.write(systemd_template)
+
+            daemon_reload()
+            service_restart("nrpe-exporter.service")
+
+            # This seems dumb, since it's actually unmasking and setting it to
+            # `enable --now`, but it's the only method which ACTUALLY enables it
+            # so it will survive reboots
+            service_resume("nrpe-exporter.service")
+
+    def _nrpe_relation_broken(self, _):
+        self._stored.have_nrpe = False
+
+    def _general_info_relation_broken(self, _):
+        self._stored.have_general_info_nrpe = False
+
+    def _on_filebeat_relation_joined(self, event):
+        self._stored.have_filebeat = True
+        self._start_vector()
+
+        event.relation.data[self.unit]["private-address"] = self.hostname
+        event.relation.data[self.unit]["port"] = "5044"
+
+    def _start_vector(self):
+        # Make sure the vector binary is present with a systemd service
+        if not Path("/usr/local/bin/vector").exists():
+            res = "vector"
+
+            st = Path(res)
+            st.chmod(st.stat().st_mode | stat.S_IEXEC)
+            shutil.copy(str(st.absolute()), "/usr/local/bin/vector")
+
+            systemd_template = textwrap.dedent(
+                """
+                [Unit]
+                Description="Vector - An observability pipelines tool"
+                Documentation=https://vector.dev/
+                Wants=network-online.target
+                After=network-online.target
+
+                [Service]
+                Type=exec
+                LimitNPROC=infinity
+                LimitNOFILE=infinity
+                Environment="LOG_FORMAT=json"
+                Environment="VECTOR_CONFIG_YAML=/etc/vector/aggregator/vector.yaml"
+                ExecStartPre=/usr/local/bin/vector validate
+                ExecStart=/usr/local/bin/vector -w
+                ExecReload=/usr/local/bin/vector validate
+                ExecReload=/bin/kill -HUP $MAINPID
+                Restart=always
+                AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+                [Install]
+                WantedBy=multi-user.target
+                """
+            )
+
+            with open("/etc/systemd/system/vector.service", "w") as f:
+                f.write(systemd_template)
+
+            self._write_vector_config(None)
+            self._modify_enrichment_file()
+
+            daemon_reload()
+            service_restart("vector.service")
+            service_resume("vector.service")
+
+    @property
+    def path(self):
+        """Path to the nrpe targets file."""
+        path = Path("/etc/vector/nrpe_lookup.csv")
+        return path
+
+    def _modify_enrichment_file(self, endpoints: Optional[List[Dict[str, Any]]] = None):
+        fieldnames = ["composite_key", "juju_application", "juju_unit", "command", "ipaddr"]
+        path = self.path
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", newline="") as f:
+                writer = DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+
+        if not endpoints:
+            return
+
+        current = []
+        for endpoint in endpoints:
+            target = (
+                f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
+                + f"{endpoint['additional_fields']['updates']['params']['command'][0]}"
+            )
+
+            unit_name = next(
+                filter(
+                    lambda d: "target_label" in d and d["target_label"] == "juju_unit",  # type: ignore
+                    endpoint["additional_fields"]["relabel_configs"],
+                )
+            )["replacement"]
+
+            # Out of all the fieldnames in the csv file, "composite_key" and "juju_unit" are sufficient to uniquely
+            # identify targets. This is needed for calculating an up-to-date list of targets on relation changes.
+            current.append((target, unit_name))
+
+        with path.open(newline="") as f:
+            reader = DictReader(f)
+            contents = [r for r in reader if (r["composite_key"], r["juju_unit"]) in current]
+
+            for endpoint in endpoints:
+                unit = next(
+                    iter(
+                        [
+                            c["replacement"]
+                            for c in endpoint["additional_fields"]["relabel_configs"]
+                            if c["target_label"] == "juju_unit"
+                        ]
+                    )
+                )
+                entry = {
+                    "composite_key": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}_"
+                    + f"{endpoint['additional_fields']['updates']['params']['command'][0]}",
+                    "juju_application": re.sub(r"^(.*?)/\d+$", r"\1", unit),
+                    "juju_unit": unit,
+                    "command": endpoint["additional_fields"]["updates"]["params"]["command"][0],
+                    "ipaddr": f"{endpoint['target'][next(iter(endpoint['target']))]['hostname']}",
+                }
+
+                if entry not in contents:
+                    contents.append(entry)
+
+        if contents:
+            with path.open("w", newline="") as f:
+                writer = DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+
+                for c in contents:
+                    writer.writerow(c)
+
+    def _write_vector_config(self, _):
+        if not Path("/var/lib/vector").exists():
+            Path("/var/lib/vector").mkdir(parents=True, exist_ok=True)
+
+        vector_config = Path("/etc/vector/aggregator/vector.yaml")
+        if not vector_config.exists():
+            vector_config.parent.mkdir(parents=True, exist_ok=True)
+
+        loki_endpoints = []
+        for relation in self.model.relations["downstream-logging"]:
+            if not relation.units:
+                continue
+            for unit in relation.units:
+                if endpoint := relation.data[unit].get("endpoint", ""):
+                    loki_endpoints.append(json.loads(endpoint)["url"])
+
+        config = self.vector.config
+        with vector_config.open("w") as f:
+            f.write(config)
+
+    def _filebeat_relation_broken(self, _):
+        self._stored.have_filebeat = False
+
+    def _downstream_logging_relation_joined(self, _):
+        self._stored.have_loki = True
+
+    def _downstream_logging_relation_broken(self, _):
+        self._stored.have_loki = False
+
+    def _downstream_grafana_dashboard_relation_joined(self, _):
+        self._stored.have_grafana = True
+
+    def _downstream_grafana_dashboard_relation_broken(self, _):
+        self._stored.have_grafana = False
+
+    def _prometheus_target_relation_joined(self, _):
+        self._stored.have_targets = True
+
+    def _prometheus_target_relation_broken(self, _):
+        self._stored.have_targets = False
+
+    def _downstream_prometheus_scrape_relation_joined(self, _):
+        if self._stored.have_nrpe:  # pyright: ignore
+            self._on_nrpe_targets_changed(None)
+        self._stored.have_prometheus = True
+
+    def _downstream_prometheus_scrape_relation_broken(self, _):
+        self._stored.have_prometheus = False
+
+    def _on_nrpe_targets_changed(self, event: Optional[NrpeTargetsChangedEvent]):
+        """When NRPE targets change, recalculate alert rules and scrape configs.
+
+        This method updates the stored state and relation data downstream relations join
+        (e.g. cos-agent, prometheus, etc.). It recalculates all the data sources and passes it to
+        stored state.
+        """
+        if event and isinstance(event, NrpeTargetsChangedEvent):
+            for target in event.removed_targets:
+                self.metrics_aggregator.remove_prometheus_jobs(target)  # type: ignore
+
+            for alert in event.removed_alerts:
+                self.metrics_aggregator.remove_alert_rules(
+                    self.metrics_aggregator.group_name(alert["labels"]["juju_unit"]),  # type: ignore
+                    alert["labels"]["juju_unit"],  # type: ignore
+                )
+
+            nrpes = cast(List[Dict[str, Any]], event.current_targets)
+            current_alerts = event.current_alerts
         else:
-            self.unit.status = ActiveStatus()
+            # If the event arg is None, then the stored state value is already up-to-date.
+            nrpes = self.nrpe_exporter.endpoints()
+            current_alerts = self.nrpe_exporter.alerts()
+
+        self._modify_enrichment_file(endpoints=nrpes)
+
+        # Add scrape jobs for prometheus and cos-agent relations
+        for nrpe in nrpes:
+            self.metrics_aggregator.set_target_job_data(
+                nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
+            )
+        # NOTE: We never stop vector once started, so we assume that within an NRPE event, the
+        #       vector target can be scraped in the future
+        vector_target = {self.unit.name: {"hostname": self.host, "port": VECTOR_PORT}}
+        self.metrics_aggregator.set_target_job_data(vector_target, self.app.name)
+
+        for alert in current_alerts:
+            self.metrics_aggregator.set_alert_rule_data(
+                re.sub(r"/", "_", alert["labels"]["juju_unit"]),  # type: ignore
+                alert,  # type: ignore
+                label_rules=False,
+            )
+
+    def _set_status(self, _event):
+        # Put charm in blocked status if all incoming relations are missing
+        # We could obtain the set of active relations with:
+        # {k for k, v in self.model.relations.items() if v}
+        # but that would incur a relation-list and multiple relation-get calls, so building up from
+        # stored state instead.
+        active_relations = {
+            rel
+            for (rel, indicator) in [
+                ("downstream-grafana-dashboard", self._stored.have_grafana),
+                ("cos-agent", self._stored.have_gagent),
+                ("dashboards", self._stored.have_dashboards),
+                ("downstream-logging", self._stored.have_loki),
+                ("filebeat", self._stored.have_filebeat),
+                ("monitors", self._stored.have_nrpe),
+                ("general-info", self._stored.have_general_info_nrpe),
+                ("downstream-prometheus-scrape", self._stored.have_prometheus),
+                ("prometheus-target", self._stored.have_targets),
+                ("prometheus-rules", self._stored.have_prometheus_rules),
+                ("prometheus", self._stored.have_prometheus_manual),
+            ]
+            if indicator
+        }
+
+        # Set blocked if _all_ incoming relations are missing. This helps notice under-configured
+        # or redundant cos-proxy instances.
+        if not set(self.relation_pairs.keys()).intersection(active_relations):
+            self.unit.status = BlockedStatus("Add at least one incoming relation")
+            logger.info(
+                "Missing incoming relation(s). Add one or more of: %s.",
+                ", ".join(self.relation_pairs.keys()),
+            )
+            return
+
+        if missing := MandatoryRelationPairs(self.relation_pairs).get_missing_as_str(
+            *active_relations
+        ):
+            self.unit.status = BlockedStatus(f"Missing {missing}")
+            return
+
+        self.unit.status = ActiveStatus()
+
+    @property
+    def hostname(self) -> str:
+        """Unit's hostname."""
+        return socket.getfqdn()
+
+    @property
+    def host(self) -> str:
+        """Unit's ip address."""
+        return socket.gethostbyname(self.hostname)
+
 
 
 if __name__ == "__main__":  # pragma: no cover
-    main(LMAProxyCharm)
+    main(COSProxyCharm)
