@@ -254,7 +254,7 @@ if TYPE_CHECKING:
 
 LIBID = "dc15fa84cef84ce58155fb84f6c6213a"
 LIBAPI = 0
-LIBPATCH = 22
+LIBPATCH = 23
 
 PYDEPS = ["cosl >= 0.0.50", "pydantic"]
 
@@ -644,6 +644,9 @@ class COSAgentProvider(Object):
             scrape_configs: List of standard scrape_configs dicts or a callable
                 that returns the list in case the configs need to be generated dynamically.
                 The contents of this list will be merged with the contents of `metrics_endpoints`.
+            extra_alert_groups: A callable that returns a dict of alert rule groups in case the
+                alerts need to be generated dynamically. The contents of this dict will be merged
+                with generic and bundled alert rules.
         """
         super().__init__(charm, relation_name)
         dashboard_dirs = dashboard_dirs or ["./src/grafana_dashboards"]
