@@ -66,7 +66,7 @@ graph TD
 
 ## Relating over the cos-agent interface
 
-In this topology, integration is achieved via the `grafana-agent`'s `cos-agent` interface. Here, `cos-proxy` sends metrics and dashboard configurations to `grafana-agent`, which then forwards these to `Prometheus` and `Grafana` via the offered SAAS relations from `cos-lite`.
+In this topology, integration is achieved via the `oltelcol` (or `grafana-agent`) `cos-agent` interface. Here, `cos-proxy` sends metrics and dashboard configurations to `grafana-agent`, which then forwards these to `Prometheus` and `Grafana` via the offered SAAS relations from `cos-lite`.
 
 
 ```mermaid
