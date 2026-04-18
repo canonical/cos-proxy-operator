@@ -78,6 +78,9 @@ log_cli_level = "INFO"
 asyncio_mode = "auto"
 addopts = "--tb=native --verbose --capture=no --log-cli-level=INFO"
 
+[tool.uv]
+no-build-isolation-package = ["charm-relation-interfaces"]
+
 [tool.codespell]
 skip = ".git,.tox,build,venv*"
 ignore-words-list = "assertIn"
