@@ -9,7 +9,6 @@ dependencies = [
   "ops",
   "jinja2<3",
   "markupsafe==2.0.1",
-  "charm-relation-interfaces@git+https://github.com/canonical/charm-relation-interfaces@main",
   "pydantic>2",
   "cosl",
   "cryptography",
