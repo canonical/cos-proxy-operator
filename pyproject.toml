@@ -9,7 +9,6 @@ dependencies = [
   "ops",
   "jinja2<3",
   "markupsafe==2.0.1",
-  "charm-relation-interfaces@git+https://github.com/canonical/charm-relation-interfaces@main",
   "pydantic>2",
   "cosl",
   "cryptography",
@@ -77,6 +76,9 @@ minversion = "6.0"
 log_cli_level = "INFO"
 asyncio_mode = "auto"
 addopts = "--tb=native --verbose --capture=no --log-cli-level=INFO"
+
+[tool.uv]
+no-build-isolation-package = ["charm-relation-interfaces"]
 
 [tool.codespell]
 skip = ".git,.tox,build,venv*"

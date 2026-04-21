@@ -5,8 +5,25 @@ type: charm
 summary: |
   Single integration point in the machine world with Kubernetes-based COS.
 description: |
-  This Juju machine charm that provides a single integration point in the
-  machine world with Kubernetes-based Canonical Observability Stack.
+  COS Proxy is a Juju machine charm that bridges legacy observability interfaces from the
+  traditional LMA stack with the Kubernetes-based Canonical Observability Stack (COS):
+  https://documentation.ubuntu.com/observability
+
+  Deployed on a machine model, it collects metrics scrape targets, alert rules, Grafana
+  dashboards, and NRPE checks from legacy charms, and forwards them to COS charms such as
+  Prometheus, Grafana, and Loki via cross-model relations.
+
+  Key features:
+
+  - Bridges legacy machine-based observability interfaces (prometheus-manual, monitors, http,
+    grafana-dashboard, elastic-beats) with COS Kubernetes charms.
+  - Translates NRPE checks into Prometheus scrape jobs and alert rules using the built-in
+    nrpe_exporter.
+  - Forwards Grafana dashboards, Prometheus scrape jobs, and alert rules to COS via
+    cross-model relations.
+  - Log forwarding to Loki via the downstream-logging relation.
+  - Designed for easy integration in bundles and Juju-driven appliances, minimizing the setup
+    needed to connect machine workloads with COS.
 
 links:
   documentation: https://discourse.charmhub.io/t/cos-proxy-operator-docs-index/5611
