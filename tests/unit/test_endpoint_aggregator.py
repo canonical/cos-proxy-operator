@@ -598,12 +598,17 @@ class TestEndpointAggregator(unittest.TestCase):
         alert_rules = json.loads(prometheus_rel_data.get("alert_rules", "{}"))
         groups = alert_rules.get("groups", [])
         # THEN the relation data contains only the generic alerts
-        self.assertEqual(len(groups), len(generic_alert_groups.application_rules))
-        alert_names_from_reldata = [r["alert"] for g in groups for r in g["rules"]]
+        self.assertEqual(
+            len(groups), len(generic_alert_groups.application_rules.get("groups", []))
+        )
+        alert_names_from_reldata = [
+            r["alert"] for g in groups for r in g.get("rules", []) if "alert" in r
+        ]
         alert_names_expected = [
             r["alert"]
-            for g in generic_alert_groups.application_rules["groups"]
+            for g in generic_alert_groups.application_rules.get("groups", [])
             for r in g["rules"]
+            if "alert" in r
         ]
         self.assertEqual(alert_names_from_reldata, alert_names_expected)
 
