@@ -75,6 +75,7 @@ class TestRelationMonitors(unittest.TestCase):
             patch.object(COSProxyCharm, "_setup_nrpe_exporter"),
             patch.object(COSProxyCharm, "_start_vector"),
             patch.object(COSProxyCharm, "path", property(lambda *_: self.mock_enrichment_file)),
+            patch("socket.gethostbyaddr", return_value=("localhost", [], ["10.181.49.93"])),
         ]:
             p.start()
             self.addCleanup(p.stop)
