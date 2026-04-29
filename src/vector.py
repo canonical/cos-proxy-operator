@@ -41,7 +41,7 @@ DEFAULT_RELATION_NAMES = {"filebeat": "elastic-beats", "downstream-logging": "lo
 # `$` is interpolated in the actual config, so use `$$` to use `$capture_group`
 # comment is here because otherwise Python's YAML serializer does the wrong thing,
 # and VRL tries to interpret it
-DEFAULT_VECTOR_CONFIG = """
+DEFAULT_VECTOR_CONFIG = r"""
 ---
 data_dir: /var/lib/vector
 api:
