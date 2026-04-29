@@ -268,9 +268,21 @@ class TestRelationMonitors(unittest.TestCase):
         cos_agent_config = json.loads(agent_app_data["config"])
 
         # THEN "cos-agent" scrape jobs are identical to those in the "downstream-prometheus-scrape" relation
-        self.assertEqual(
-            json.loads(prom_app_data["scrape_jobs"]), cos_agent_config["metrics_scrape_jobs"]
-        )
+        downstream = sorted(json.loads(prom_app_data["scrape_jobs"]), key=lambda j: j.get("job_name"))
+        cos_agent = sorted(cos_agent_config["metrics_scrape_jobs"], key=lambda j: j.get("job_name"))
+
+        # NOTE: the scrape jobs are expected to be identical, except for the "job_name" field which is generated
+        # with a random suffix to avoid conflicts in cos-agent when multiple scrape jobs exist.
+        # So "job_name" field is compared separately and then removed before full-dict comparison.
+        # -  {'job_name': 'juju_mymodel_fe2c9bb_ubuntu_ubuntu_is_amazing_0_check_systemd_scopes_prometheus_scrape',
+        # +  {'job_name': 'cos-proxy_juju_mymodel_fe2c9bb_ubuntu_ubuntu_is_amazing_0_check_systemd_scopes_prometheus_scrape_35630366'
+        for downstream_job, cos_agent_job in zip(downstream, cos_agent):
+            self.assertIn(
+                downstream_job.pop("job_name"),
+                cos_agent_job.pop("job_name"),
+            )
+
+        self.assertEqual(downstream, cos_agent)
 
         # AND "cos-agent" alert rules are identical to those in the "downstream-prometheus-scrape" relation
         prom_groups = json.loads(prom_app_data["alert_rules"])["groups"]
