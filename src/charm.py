@@ -42,6 +42,7 @@ from csv import DictReader, DictWriter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
+import ops_tracing
 from charms.grafana_agent.v0.cos_agent import COSAgentProvider
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.operator_libs_linux.v0.apt import remove_package
@@ -284,6 +285,13 @@ class COSProxyCharm(CharmBase):
 
         # NOTE: Config option "forward_alert_rules" conditionally changes the databag
         self.framework.observe(self.on.config_changed, self.metrics_aggregator.update_alerts)
+
+        if self.model.relations.get("charm-tracing"):
+            self.charm_tracing = ops_tracing.Tracing(
+                self,
+                tracing_relation_name="charm-tracing",
+                ca_relation_name="receive-ca-cert",
+            )
 
     def _on_cos_agent_relation_joined(self, _):
         self._stored.have_gagent = True

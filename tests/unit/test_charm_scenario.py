@@ -193,3 +193,25 @@ def test_deduplicated_scrape_jobs():
     # AND there are no duplicate scrape jobs
     # Note: using lib.charms.prometheus_k8s.v0.prometheus_scrape._dedupe_list
     assert scrape_jobs == _dedupe_list(scrape_jobs)
+
+
+def test_charm_tracing_initialized_when_relation_exists():
+    """Test that charm tracing is initialized when charm-tracing relation exists."""
+    ctx = scenario.Context(COSProxyCharm)
+    charm_tracing_relation = scenario.Relation(
+        "charm-tracing",
+        remote_app_name="tempo",
+    )
+    state_in = scenario.State(leader=True, relations=[charm_tracing_relation])
+
+    with ctx(ctx.on.start(), state=state_in) as mgr:
+        assert hasattr(mgr.charm, "charm_tracing")
+
+
+def test_charm_tracing_not_initialized_without_relation():
+    """Test that charm tracing is not initialized when no charm-tracing relation exists."""
+    ctx = scenario.Context(COSProxyCharm)
+    state_in = scenario.State(leader=True, relations=[])
+
+    with ctx(ctx.on.start(), state=state_in) as mgr:
+        assert not hasattr(mgr.charm, "charm_tracing")

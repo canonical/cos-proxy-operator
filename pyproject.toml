@@ -6,7 +6,7 @@ version = "0.0"
 requires-python = "~=3.8"
 
 dependencies = [
-  "ops<3",
+  "ops[tracing]<3",
   "jinja2<3",
   "markupsafe==2.0.1",
   "pydantic>2",
