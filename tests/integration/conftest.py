@@ -2,15 +2,18 @@
 # Copyright 2025 Canonical Ltd.
 # See LICENSE file for licensing details.
 
+from __future__ import annotations
+
 import logging
 import os
 import platform
 from pathlib import Path
+from typing import Optional
 
+import jubilant
+import sh  # type: ignore[import-untyped]
 import yaml
-from jubilant import Juju
 from pytest import fixture
-from pytest_jubilant import pack
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 logger = logging.getLogger("conftest")
@@ -32,8 +35,34 @@ def get_system_arch() -> str:
     return arch
 
 
+def pack(root: Path, platform: Optional[str] = None) -> Path:
+    """Pack a local charm and return it."""
+    args = ["-p", str(root)]
+    if platform:
+        args.extend(["--platform", platform])
+
+    # charmcraft outputs "Packed <charm_file>" lines to stderr
+    charmcraft = sh.Command("charmcraft")
+    output = charmcraft.pack(*args, _err_to_out=True)
+
+    packed_charms = [
+        line.split()[1] for line in str(output).strip().splitlines() if line.startswith("Packed")
+    ]
+
+    if not packed_charms:
+        raise ValueError(f"Unable to get packed charm from charmcraft output: {output}")
+
+    if len(packed_charms) > 1:
+        raise ValueError(
+            "This charm supports multiple platforms. "
+            "Pass a `platform` argument to control which charm you're getting."
+        )
+
+    return Path(packed_charms[0]).resolve()
+
+
 @fixture(scope="module")
-def patch_update_status_interval(juju: Juju):
+def patch_update_status_interval(juju: jubilant.Juju):
     """Patch update-status-hook-interval to avoid interference with tests."""
     juju.model_config({"update-status-hook-interval": "1h"})
     yield
@@ -41,7 +70,7 @@ def patch_update_status_interval(juju: Juju):
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_fixed(10))
-def patch_otel_collector_log_level(juju: Juju, unit_no=0):
+def patch_otel_collector_log_level(juju: jubilant.Juju, unit_no: int = 0):
     """Patch the collector's log level to INFO for debug exporter inspection."""
     juju.ssh(
         f"{OTEL_COLLECTOR_APP_NAME}/{unit_no}",
@@ -51,21 +80,27 @@ def patch_otel_collector_log_level(juju: Juju, unit_no=0):
     juju.ssh(f"{OTEL_COLLECTOR_APP_NAME}/{unit_no}", "sudo snap restart opentelemetry-collector")
 
 
-@fixture(scope="module", autouse=True)
-def patch_model_constraints_architecture(juju: Juju):
-    """Set model constraints to match the current architecture."""
-    juju.cli("set-model-constraints", f"arch={get_system_arch()}")
+@fixture(scope="module")
+def juju():
+    """Juju instance with a temporary model for testing."""
+    keep_models: bool = os.environ.get("KEEP_MODELS") is not None
+    with jubilant.temp_model(keep=keep_models) as juju:
+        juju.cli("set-model-constraints", f"arch={get_system_arch()}")
+        yield juju
 
 
 @fixture(scope="module")
 def charm():
     """Charm used for integration testing."""
     if charm_path := os.getenv("CHARM_PATH"):
-        logger.info("using charm from env")
+        logger.info("using charm from env: %s", charm_path)
         return charm_path
+
     arch = get_system_arch()
-    if Path(charm_file := REPO_ROOT / f"cos-proxy_ubuntu@24.04-{arch}.charm").exists():
-        logger.info(f"using existing charm from {REPO_ROOT}")
-        return charm_file
-    logger.info(f"packing from {REPO_ROOT}")
-    return pack(REPO_ROOT)
+    charm_file = REPO_ROOT / f"cos-proxy_ubuntu@24.04-{arch}.charm"
+    if charm_file.exists():
+        logger.info("using existing charm: %s", charm_file)
+        return str(charm_file)
+
+    logger.info("packing charm from %s", REPO_ROOT)
+    return str(pack(REPO_ROOT, platform=f"ubuntu@24.04:{arch}"))

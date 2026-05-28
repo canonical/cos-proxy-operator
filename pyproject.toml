@@ -34,9 +34,10 @@ dev = [
   "pytest-interface-tester",
   # Integration
   "jubilant",
-  "pytest-jubilant",
+  "pytest-jubilant>=2",
   "pytest-bdd",
   "tenacity",
+  "sh",
 ]
 
 # Testing tools configuration
