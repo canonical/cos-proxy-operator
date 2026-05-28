@@ -20,7 +20,7 @@ logger = logging.getLogger("conftest")
 REPO_ROOT = Path(__file__).parent.parent.parent
 METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
 APP_NAME = "cos-proxy"
-APP_BASE = next(iter(METADATA["platforms"])).split(":")[0]
+APP_BASE = "ubuntu@24.04"
 OTEL_COLLECTOR_APP_NAME = "opentelemetry-collector"
 COS_CHANNEL = "2/edge"
 
