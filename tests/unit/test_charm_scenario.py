@@ -1,6 +1,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 import scenario
 
 from charm import COSProxyCharm
@@ -195,23 +196,45 @@ def test_deduplicated_scrape_jobs():
     assert scrape_jobs == _dedupe_list(scrape_jobs)
 
 
-def test_charm_tracing_initialized_when_relation_exists():
-    """Test that charm tracing is initialized when charm-tracing relation exists."""
+@pytest.mark.parametrize("remote_tls", (False, True))
+def test_charm_tracing_configured(remote_tls, tmp_path):
+    """Test that charm tracing is configured when cos-agent relation provides tracing endpoint."""
     ctx = scenario.Context(COSProxyCharm)
-    charm_tracing_relation = scenario.Relation(
-        "charm-tracing",
-        remote_app_name="tempo",
+    url = f"http{'s' if remote_tls else ''}://1.2.3.4:4318"
+    cos_agent_relation = scenario.Relation(
+        endpoint="cos-agent",
+        remote_units_data={
+            0: {
+                "receivers": json.dumps(
+                    [{"protocol": {"name": "otlp_http", "type": "http"}, "url": url}]
+                )
+            }
+        },
     )
-    state_in = scenario.State(leader=True, relations=[charm_tracing_relation])
+    receive_ca_relation = scenario.Relation(
+        endpoint="receive-ca-cert",
+        remote_app_data={"certificates": json.dumps(["cert1", "cert2"])},
+    )
 
-    with ctx(ctx.on.start(), state=state_in) as mgr:
-        assert hasattr(mgr.charm, "charm_tracing")
+    mock_ca_cert = tmp_path / "receive-ca-cert.crt"
+    mock_ca_cert.write_text("cert1\n\ncert2\n\n")
+
+    state_in = scenario.State(leader=True, relations=[cos_agent_relation, receive_ca_relation])
+
+    with patch("charm.CA_CERT_PATH", mock_ca_cert):
+        with patch("ops_tracing.set_destination") as mock_set_destination:
+            ctx.run(ctx.on.start(), state=state_in)
+            mock_set_destination.assert_called_with(
+                url=url + "/v1/traces",
+                ca=str(mock_ca_cert) if remote_tls else None,
+            )
 
 
-def test_charm_tracing_not_initialized_without_relation():
-    """Test that charm tracing is not initialized when no charm-tracing relation exists."""
+def test_charm_tracing_not_configured_without_cos_agent():
+    """Test that charm tracing is not configured when no cos-agent relation exists."""
     ctx = scenario.Context(COSProxyCharm)
     state_in = scenario.State(leader=True, relations=[])
 
-    with ctx(ctx.on.start(), state=state_in) as mgr:
-        assert not hasattr(mgr.charm, "charm_tracing")
+    with patch("ops_tracing.set_destination") as mock_set_destination:
+        ctx.run(ctx.on.start(), state=state_in)
+        mock_set_destination.assert_not_called()

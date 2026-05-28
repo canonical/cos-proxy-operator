@@ -31,7 +31,12 @@ dev = [
   "fs",
   "deepdiff",
   # Interface
-  "pytest-interface-tester"
+  "pytest-interface-tester",
+  # Integration
+  "jubilant",
+  "pytest-jubilant",
+  "pytest-bdd",
+  "tenacity",
 ]
 
 # Testing tools configuration

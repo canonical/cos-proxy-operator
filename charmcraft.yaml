@@ -91,6 +91,7 @@ provides:
     optional: true
   cos-agent:
     interface: cos_agent
+    limit: 1
     optional: true
     description: |
       Integration to have the workload's telemetry scraped, also forwarding
@@ -125,12 +126,6 @@ requires:
     optional: true
     description: |
       Receive host and port information so the remote host can be scraped via scrape jobs.
-  charm-tracing:
-    interface: tracing
-    limit: 1
-    optional: true
-    description: |
-      Send charm traces to a tracing backend such as Tempo.
   receive-ca-cert:
     interface: certificate_transfer
     optional: true

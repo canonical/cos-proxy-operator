@@ -43,7 +43,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 import ops_tracing
-from charms.grafana_agent.v0.cos_agent import COSAgentProvider
+from charms.grafana_agent.v0.cos_agent import (
+    COSAgentProvider,
+    charm_tracing_config,
+)
 from charms.grafana_k8s.v0.grafana_dashboard import GrafanaDashboardAggregator
 from charms.operator_libs_linux.v0.apt import remove_package
 from charms.operator_libs_linux.v1.systemd import (
@@ -74,6 +77,7 @@ DASHBOARDS_DIR = "./src/cos_agent/grafana_dashboards"
 COS_PROXY_DASHBOARDS_DIR = "./src/grafana_dashboards"
 OWN_RULES_DIR = "./src/prometheus_alert_rules"
 VECTOR_PORT = 9090
+CA_CERT_PATH = Path("/etc/cos-proxy/receive-ca-cert.crt")
 
 
 class COSProxyCharm(CharmBase):
@@ -191,6 +195,7 @@ class COSProxyCharm(CharmBase):
                 self.on.dashboards_relation_broken,
                 self.nrpe_exporter.on.nrpe_targets_changed,
             ],
+            tracing_protocols=["otlp_http"],
         )
 
         self.framework.observe(
@@ -286,16 +291,22 @@ class COSProxyCharm(CharmBase):
         # NOTE: Config option "forward_alert_rules" conditionally changes the databag
         self.framework.observe(self.on.config_changed, self.metrics_aggregator.update_alerts)
 
-        if self.model.relations.get("charm-tracing"):
-            self.charm_tracing = ops_tracing.Tracing(
-                self,
-                tracing_relation_name="charm-tracing",
-                ca_relation_name="receive-ca-cert",
-            )
+        self._reconcile_charm_tracing()
+
+    def _reconcile_charm_tracing(self):
+        """Configure ops.tracing to send traces to a tracing backend via cos-agent."""
+        endpoint, ca_cert_path = charm_tracing_config(self.cos_agent, CA_CERT_PATH)
+        if not endpoint:
+            return
+        ops_tracing.set_destination(
+            url=endpoint + "/v1/traces",
+            ca=ca_cert_path,
+        )
 
     def _on_cos_agent_relation_joined(self, _):
         self._stored.have_gagent = True
         self.metrics_aggregator.update_alerts()
+        self._reconcile_charm_tracing()
 
     def _on_cos_agent_relation_broken(self, _):
         self._stored.have_gagent = False
