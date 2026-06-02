@@ -1,0 +1,25 @@
+name: monitors-provider
+type: charm
+summary: Emits synthetic NRPE monitor relation data.
+description: Emits synthetic NRPE monitor relation data for COS Proxy benchmarks.
+
+platforms:
+  ubuntu@22.04:amd64:
+  ubuntu@24.04:amd64:
+
+provides:
+  monitors:
+    interface: monitors
+
+config:
+  options:
+    checks:
+      type: int
+      default: 3
+      description: Number of NRPE checks to emit from each unit.
+
+parts:
+  charm:
+    source: .
+    plugin: uv
+    build-snaps: [astral-uv]

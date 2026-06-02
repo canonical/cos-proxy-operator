@@ -1,0 +1,18 @@
+name: scrape-consumer
+type: charm
+summary: Consumes prometheus_scrape relation data.
+description: Consumes prometheus_scrape relation data for COS Proxy benchmarks.
+
+platforms:
+  ubuntu@22.04:amd64:
+  ubuntu@24.04:amd64:
+
+requires:
+  downstream-prometheus-scrape:
+    interface: prometheus_scrape
+
+parts:
+  charm:
+    source: .
+    plugin: uv
+    build-snaps: [astral-uv]

@@ -308,6 +308,141 @@ class MetricsEndpointAggregator(Object):
             if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
                 self._stored.jobs = jobs
 
+    def set_target_job_and_alert_rule_data_batch(
+        self,
+        target_jobs: List[Dict[str, Any]],
+        alert_rules: List[Dict[str, Any]],
+        removed_target_jobs: Optional[List[Dict[str, Any]]] = None,
+        removed_alert_rules: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        """Update scrape jobs and alert rules for a batch of generated NRPE data.
+
+        This method uses the same scrape job and alert rule merge contexts as
+        the per-item update methods, but applies all changes in memory before
+        writing downstream relation data.
+        """
+        if not self._charm.unit.is_leader():
+            return
+
+        scrape_job_contexts = [
+            ScrapeJobContext(
+                removed_job_name=job["job_name"],
+                removed_unit_name=job.get("unit_name", ""),
+            )
+            for job in removed_target_jobs or []
+        ]
+
+        alert_rule_contexts = [
+            AlertRuleContext(
+                removed_group_name=alert_rule["group_name"],
+                removed_unit_name=alert_rule["unit_name"],
+            )
+            for alert_rule in removed_alert_rules or []
+        ]
+
+        scrape_job_contexts.extend(
+            [
+                ScrapeJobContext(
+                    updated_job=self._scrape_config.from_targets(
+                        job["targets"],
+                        job["app_name"],
+                        **job.get("kwargs", {}),
+                    )
+                )
+                for job in target_jobs
+            ]
+        )
+
+        for alert_rule in alert_rules:
+            if alert_rule.get("label_rules", True):
+                rules = self._label_alert_rules(alert_rule["unit_rules"], alert_rule["name"])
+            else:
+                rules = [alert_rule["unit_rules"]]
+            alert_rule_contexts.append(
+                AlertRuleContext(
+                    updated_group={
+                        "name": self.group_name(alert_rule["name"]),
+                        "rules": rules,
+                    }
+                )
+            )
+
+        if self._should_update_cos_agent():
+            self._update_cos_agent_batch(scrape_job_contexts, alert_rule_contexts)
+
+        for relation in self.model.relations[self._prometheus_relation]:
+            updates = {}
+
+            if scrape_job_contexts:
+                jobs = json.loads(relation.data[self._charm.app].get("scrape_jobs", "[]"))
+                for scrape_job_context in scrape_job_contexts:
+                    jobs = scrape_job_context.get_updated_jobs(jobs)
+                updates["scrape_jobs"] = json.dumps(jobs)
+
+                if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
+                    self._stored.jobs = jobs
+
+            if alert_rule_contexts:
+                alert_rules_data = json.loads(
+                    relation.data[self._charm.app].get("alert_rules", "{}")
+                )
+                groups = alert_rules_data.get("groups", [])
+                for alert_rule_context in alert_rule_contexts:
+                    groups = alert_rule_context.get_updated_groups({"groups": groups})
+                updates["alert_rules"] = json.dumps(
+                    {"groups": groups if self._forward_alert_rules else []}
+                )
+
+                if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
+                    self._stored.alert_rules = groups
+
+            if updates:
+                relation.data[self._charm.app].update(updates)
+
+    def _update_cos_agent_batch(
+        self,
+        scrape_job_contexts: List["ScrapeJobContext"],
+        alert_rule_contexts: List["AlertRuleContext"],
+    ):
+        """Coordinate cos-agent with batched alert rule and scrape config changes."""
+        if not self._should_update_cos_agent():
+            return
+
+        for relation in self.model.relations[self._charm.cos_agent._relation_name]:
+            if not (config_str := relation.data[self._charm.unit].get("config")):
+                continue
+
+            config = json.loads(config_str)
+
+            if scrape_job_contexts:
+                jobs = config.get("metrics_scrape_jobs", [])
+                for scrape_job_context in scrape_job_contexts:
+                    jobs = scrape_job_context.get_updated_jobs(jobs)
+                config["metrics_scrape_jobs"] = jobs
+                if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
+                    self._stored.jobs = jobs
+
+            metrics_alert_rules = config.get("metrics_alert_rules", {})
+            if alert_rule_contexts:
+                groups = metrics_alert_rules.get("groups", [])
+                for alert_rule_context in alert_rule_contexts:
+                    groups = alert_rule_context.get_updated_groups({"groups": groups})
+                config["metrics_alert_rules"] = {
+                    "groups": groups if self._forward_alert_rules else []
+                }
+                if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
+                    self._stored.alert_rules = groups
+
+            relation.data[self._charm.unit]["config"] = json.dumps(config)
+
+    def _should_update_cos_agent(self) -> bool:
+        """Return whether cos-agent should receive data directly from the aggregator."""
+        if not hasattr(self._charm, "cos_agent"):
+            return False
+        cos_agent_relations = self.model.relations[self._charm.cos_agent._relation_name]
+        prom_relations = self.model.relations[self._prometheus_relation]
+        return bool(cos_agent_relations and not prom_relations)
+
     def _on_prometheus_targets_departed(self, event):
         """Remove scrape jobs when a target departs.
 
@@ -330,38 +465,33 @@ class MetricsEndpointAggregator(Object):
 
         WARNING: This method creates a dependency between COSAgentProvider and MetricsEndpointAggregator.
         """
-        if not hasattr(self._charm, "cos_agent"):
+        if not self._should_update_cos_agent():
             return
-        cos_agent_relations = self.model.relations[self._charm.cos_agent._relation_name]
-        prom_relations = self.model.relations[self._prometheus_relation]
-        if cos_agent_relations and not prom_relations:
-            for relation in cos_agent_relations:
-                if not (config_str := relation.data[self._charm.unit].get("config")):
-                    continue
+        for relation in self.model.relations[self._charm.cos_agent._relation_name]:
+            if not (config_str := relation.data[self._charm.unit].get("config")):
+                continue
 
-                config = json.loads(config_str)
+            config = json.loads(config_str)
 
-                # Scrape configs
-                if scrape_job_context is not None:
-                    jobs = scrape_job_context.get_updated_jobs(config.get("metrics_scrape_jobs", []))
-                    config["metrics_scrape_jobs"] = jobs
-                    if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
-                        self._stored.jobs = jobs
+            # Scrape configs
+            if scrape_job_context is not None:
+                jobs = scrape_job_context.get_updated_jobs(config.get("metrics_scrape_jobs", []))
+                config["metrics_scrape_jobs"] = jobs
+                if not _type_convert_stored(self._stored.jobs) == jobs:  # pyright: ignore
+                    self._stored.jobs = jobs
 
-                # Alert rules
-                metrics_alert_rules = config.get("metrics_alert_rules", {})
-                if alert_rule_context is not None:
-                    groups = alert_rule_context.get_updated_groups(metrics_alert_rules)
-                else:
-                    groups = metrics_alert_rules.get("groups", [])
-                config["metrics_alert_rules"] = {
-                    "groups": groups if self._forward_alert_rules else []
-                }
-                if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
-                    self._stored.alert_rules = groups
+            # Alert rules
+            metrics_alert_rules = config.get("metrics_alert_rules", {})
+            if alert_rule_context is not None:
+                groups = alert_rule_context.get_updated_groups(metrics_alert_rules)
+            else:
+                groups = metrics_alert_rules.get("groups", [])
+            config["metrics_alert_rules"] = {"groups": groups if self._forward_alert_rules else []}
+            if not _type_convert_stored(self._stored.alert_rules) == groups:  # pyright: ignore
+                self._stored.alert_rules = groups
 
-                # Update relation data
-                relation.data[self._charm.unit]["config"] = json.dumps(config)
+            # Update relation data
+            relation.data[self._charm.unit]["config"] = json.dumps(config)
 
     def remove_prometheus_jobs(self, job_name: str, unit_name: Optional[str] = ""):
         """Given a job name and unit name, remove scrape jobs associated.
@@ -630,8 +760,7 @@ class AlertRuleContext:
 
     def get_updated_groups(self, alert_rules: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Return the resulting list of alert rule groups when the desired state has changed."""
-        if not (groups := _dedupe_list(alert_rules.get("groups", []))):
-            return groups
+        groups = _dedupe_list(alert_rules.get("groups", []))
 
         # Add alert rule groups
         for group in groups:
