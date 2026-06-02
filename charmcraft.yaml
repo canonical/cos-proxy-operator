@@ -26,7 +26,7 @@ description: |
     needed to connect machine workloads with COS.
 
 links:
-  documentation: https://discourse.charmhub.io/t/cos-proxy-operator-docs-index/5611
+  documentation: https://documentation.ubuntu.com/observability/latest/
 
 platforms:
   ubuntu@20.04:amd64:
