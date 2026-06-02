@@ -6,11 +6,11 @@ Run with:
 
 Useful environment variables:
 
-    COS_PROXY_BASELINE_CHARM=cos-proxy
-    COS_PROXY_BASELINE_CHANNEL=2/stable
-    COS_PROXY_BASELINE_REVISION=123
-    COS_PROXY_BASELINE_REF=origin/main
-    COS_PROXY_CANDIDATE_CHARM=/path/to/candidate.charm
+    COS_PROXY_SEQUENTIAL_CHARM=cos-proxy
+    COS_PROXY_SEQUENTIAL_CHANNEL=2/stable
+    COS_PROXY_SEQUENTIAL_REVISION=123
+    COS_PROXY_SEQUENTIAL_REF=origin/main
+    COS_PROXY_BATCHED_CHARM=/path/to/batched.charm
     COS_PROXY_BENCHMARK_CASES=both
     COS_PROXY_BENCHMARK_UNITS=20
     COS_PROXY_BENCHMARK_CHECKS=3
@@ -20,14 +20,12 @@ Useful environment variables:
 
 The benchmark packs two COS Proxy charms:
 
-* baseline: from Charmhub cos-proxy 2/stable by default
-* candidate: from the current working tree, or COS_PROXY_CANDIDATE_CHARM if set
+* sequential: from Charmhub cos-proxy 2/stable by default
+* batched: from the current working tree, or COS_PROXY_BATCHED_CHARM if set
 
 It deploys each into an isolated Juju model with a synthetic monitors provider
 and a synthetic prometheus_scrape consumer, then measures how long the model
 takes to reach the expected downstream scrape/alert counts.
-Results are labelled sequential for the baseline implementation and batched for
-the candidate implementation.
 """
 
 import hashlib
@@ -50,8 +48,8 @@ CHECKS = int(os.environ.get("COS_PROXY_BENCHMARK_CHECKS", "3"))
 TIMEOUT = int(os.environ.get("COS_PROXY_BENCHMARK_TIMEOUT", "1800"))
 CASES = os.environ.get("COS_PROXY_BENCHMARK_CASES", "both")
 BASE = os.environ.get("COS_PROXY_BENCHMARK_BASE", "ubuntu@22.04")
-BASELINE_CHANNEL = os.environ.get("COS_PROXY_BASELINE_CHANNEL", "2/stable")
-BASELINE_REVISION = os.environ.get("COS_PROXY_BASELINE_REVISION")
+SEQUENTIAL_CHANNEL = os.environ.get("COS_PROXY_SEQUENTIAL_CHANNEL", "2/stable")
+SEQUENTIAL_REVISION = os.environ.get("COS_PROXY_SEQUENTIAL_REVISION")
 DEFAULT_CHARMCRAFT_PACK_ARGS = f"--platform {BASE}:amd64"
 CHARMCRAFT_PACK_ARGS = tuple(
     shlex.split(os.environ.get("COS_PROXY_CHARMCRAFT_PACK_ARGS", DEFAULT_CHARMCRAFT_PACK_ARGS))
@@ -166,36 +164,36 @@ def pack_charm(source: Path, name: str, *, version: str | None = None) -> Path:
 
 
 def pack_cos_proxy_from_ref(ref: str) -> Path:
-    worktree = ARTIFACTS_DIR / f"cos-proxy-baseline-{ref.replace('/', '-')}"
+    worktree = ARTIFACTS_DIR / f"cos-proxy-sequential-{ref.replace('/', '-')}"
     if worktree.exists():
         run("git", "worktree", "remove", "--force", str(worktree))
     run("git", "worktree", "add", "--detach", str(worktree), ref)
     try:
         version = run("git", "describe", "--always", cwd=worktree).strip()
-        return pack_charm(worktree, "cos-proxy-baseline", version=version)
+        return pack_charm(worktree, "cos-proxy-sequential", version=version)
     finally:
         run("git", "worktree", "remove", "--force", str(worktree))
 
 
-def pack_candidate() -> Path:
-    if candidate := os.environ.get("COS_PROXY_CANDIDATE_CHARM"):
-        return Path(candidate).resolve()
+def pack_batched() -> Path:
+    if batched_charm := os.environ.get("COS_PROXY_BATCHED_CHARM"):
+        return Path(batched_charm).resolve()
     version = run("git", "describe", "--always", "--dirty", cwd=REPO_ROOT).strip()
-    return pack_charm(REPO_ROOT, "cos-proxy-candidate", version=version)
+    return pack_charm(REPO_ROOT, "cos-proxy-batched", version=version)
 
 
-def baseline_deploy_spec() -> tuple[str | Path, str, str | None, int | None]:
-    if baseline_charm := os.environ.get("COS_PROXY_BASELINE_CHARM"):
-        revision = int(BASELINE_REVISION) if BASELINE_REVISION else None
-        if baseline_charm.startswith((".", "/")):
-            return Path(baseline_charm).resolve(), f"local:{baseline_charm}", None, None
-        return baseline_charm, f"{baseline_charm}:{BASELINE_CHANNEL}", BASELINE_CHANNEL, revision
+def sequential_deploy_spec() -> tuple[str | Path, str, str | None, int | None]:
+    if sequential_charm := os.environ.get("COS_PROXY_SEQUENTIAL_CHARM"):
+        revision = int(SEQUENTIAL_REVISION) if SEQUENTIAL_REVISION else None
+        if sequential_charm.startswith((".", "/")):
+            return Path(sequential_charm).resolve(), f"local:{sequential_charm}", None, None
+        return sequential_charm, f"{sequential_charm}:{SEQUENTIAL_CHANNEL}", SEQUENTIAL_CHANNEL, revision
 
-    if baseline_ref := os.environ.get("COS_PROXY_BASELINE_REF"):
-        return pack_cos_proxy_from_ref(baseline_ref), f"git:{baseline_ref}", None, None
+    if sequential_ref := os.environ.get("COS_PROXY_SEQUENTIAL_REF"):
+        return pack_cos_proxy_from_ref(sequential_ref), f"git:{sequential_ref}", None, None
 
-    revision = int(BASELINE_REVISION) if BASELINE_REVISION else None
-    return "cos-proxy", f"cos-proxy:{BASELINE_CHANNEL}", BASELINE_CHANNEL, revision
+    revision = int(SEQUENTIAL_REVISION) if SEQUENTIAL_REVISION else None
+    return "cos-proxy", f"cos-proxy:{SEQUENTIAL_CHANNEL}", SEQUENTIAL_CHANNEL, revision
 
 
 def relation_counts(juju: jubilant.Juju) -> tuple[int, int]:
@@ -289,7 +287,7 @@ def destroy_model(juju_factory, juju: jubilant.Juju) -> None:
     except jubilant.CLIError as exc:
         print(f"WARNING: failed to destroy benchmark model {model}: {exc}", flush=True)
     finally:
-        # The baseline model is intentionally destroyed before the candidate case to keep
+        # The sequential model is intentionally destroyed before the batched case to keep
         # large fan-in benchmarks within local LXD capacity. pytest-jubilant still has the
         # model registered for final teardown, so unregister it after our explicit destroy.
         models = getattr(juju_factory, "_models", None)
@@ -306,12 +304,12 @@ def print_results(results: list[dict]) -> None:
 def selected_cases() -> set[str]:
     cases = {case.strip() for case in CASES.split(",") if case.strip()}
     if cases == {"both"}:
-        return {"baseline", "candidate"}
-    valid_cases = {"baseline", "candidate"}
+        return {"sequential", "batched"}
+    valid_cases = {"sequential", "batched"}
     if not cases or not cases <= valid_cases:
         raise ValueError(
-            "COS_PROXY_BENCHMARK_CASES must be one of: both, baseline, candidate, "
-            "or a comma-separated combination of baseline,candidate"
+            "COS_PROXY_BENCHMARK_CASES must be one of: both, sequential, batched, "
+            "or a comma-separated combination of sequential,batched"
         )
     return cases
 
@@ -323,35 +321,37 @@ def test_cos_proxy_monitors_fan_in_benchmark(juju_factory):
 
     results = []
 
-    if "baseline" in cases:
-        baseline_charm, baseline_label, baseline_channel, baseline_revision = baseline_deploy_spec()
-        baseline = juju_factory.get_juju(suffix="baseline")
+    if "sequential" in cases:
+        sequential_charm, sequential_label, sequential_channel, sequential_revision = (
+            sequential_deploy_spec()
+        )
+        sequential = juju_factory.get_juju(suffix="sequential")
         try:
-            baseline_result = run_case(
-                baseline,
-                label=f"sequential:{baseline_label}",
-                cos_proxy_charm=baseline_charm,
-                cos_proxy_channel=baseline_channel,
-                cos_proxy_revision=baseline_revision,
+            sequential_result = run_case(
+                sequential,
+                label=f"sequential:{sequential_label}",
+                cos_proxy_charm=sequential_charm,
+                cos_proxy_channel=sequential_channel,
+                cos_proxy_revision=sequential_revision,
                 provider_charm=provider_charm,
                 consumer_charm=consumer_charm,
             )
-            results.append(baseline_result)
+            results.append(sequential_result)
             print_results(results)
         finally:
-            destroy_model(juju_factory, baseline)
+            destroy_model(juju_factory, sequential)
 
-    if "candidate" in cases:
-        candidate_charm = pack_candidate()
-        candidate = juju_factory.get_juju(suffix="candidate")
-        candidate_result = run_case(
-            candidate,
+    if "batched" in cases:
+        batched_charm = pack_batched()
+        batched = juju_factory.get_juju(suffix="batched")
+        batched_result = run_case(
+            batched,
             label="batched:working-tree",
-            cos_proxy_charm=candidate_charm,
+            cos_proxy_charm=batched_charm,
             provider_charm=provider_charm,
             consumer_charm=consumer_charm,
         )
-        results.append(candidate_result)
+        results.append(batched_result)
         print_results(results)
 
     results_by_case = {
