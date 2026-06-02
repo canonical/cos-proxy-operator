@@ -332,6 +332,13 @@ class AmbiguousRelationUsageError(TracingError):
     """Raised when one wrongly assumes that there can only be one relation on an endpoint."""
 
 
+def _model_json(model: pydantic.BaseModel, **kwargs) -> str:
+    """Serialize a pydantic model without warning on pydantic v2."""
+    if hasattr(model, "model_dump_json"):
+        return model.model_dump_json(**kwargs)
+    return model.json(**kwargs)
+
+
 # TODO we want to eventually use `DatabagModel` from cosl but it likely needs a move to common package first
 if int(pydantic.version.VERSION.split(".")[0]) < 2:  # type: ignore
 
@@ -387,7 +394,7 @@ if int(pydantic.version.VERSION.split(".")[0]) < 2:  # type: ignore
                 databag = {}
 
             if self._NEST_UNDER:
-                databag[self._NEST_UNDER] = self.json(by_alias=True)
+                databag[self._NEST_UNDER] = _model_json(self, by_alias=True)
                 return databag
 
             dct = self.dict()
@@ -687,7 +694,7 @@ class COSAgentProvider(Object):
                         log_slots=self._log_slots,
                         tracing_protocols=self._tracing_protocols,
                     )
-                    relation.data[self._charm.unit][data.KEY] = data.json()
+                    relation.data[self._charm.unit][data.KEY] = _model_json(data)
                 except (
                     pydantic.ValidationError,
                     json.decoder.JSONDecodeError,
@@ -997,7 +1004,7 @@ class COSAgentRequirer(Object):
         )
         self.peer_relation.data[self._charm.unit][
             f"{CosAgentPeersUnitData.KEY}-{event.unit.name}"
-        ] = data.json()
+        ] = _model_json(data)
 
         self.on.data_changed.emit()  # pyright: ignore
 
@@ -1046,7 +1053,7 @@ class COSAgentRequirer(Object):
         )
         self.peer_relation.data[self._charm.unit][
             f"{CosAgentPeersUnitData.KEY}-{event.unit.name}"
-        ] = data.json()
+        ] = _model_json(data)
 
         # We can't easily tell if the data that was changed is limited to only the data
         # that goes into peer relation (in which case, if this is not a leader unit, we wouldn't
