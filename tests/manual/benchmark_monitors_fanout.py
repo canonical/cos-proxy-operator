@@ -79,7 +79,8 @@ def main():
     )
     args = parser.parse_args()
 
-    mock_enrichment_file = Path(tempfile.mkstemp()[1])
+    with tempfile.NamedTemporaryFile(delete=False) as tf:
+        mock_enrichment_file = Path(tf.name)
     relation_set_calls = 0
     relation_set_key_updates = {"scrape_jobs": 0, "alert_rules": 0}
     relation_set_payload_bytes = {"scrape_jobs": 0, "alert_rules": 0}
