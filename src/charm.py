@@ -43,6 +43,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 
 import ops_tracing
+from charms.certificate_transfer_interface.v1.certificate_transfer import (
+    CertificatesAvailableEvent,
+    CertificatesRemovedEvent,
+    CertificateTransferRequires,
+)
 from charms.grafana_agent.v0.cos_agent import (
     COSAgentProvider,
     charm_tracing_config,
@@ -198,14 +203,31 @@ class COSProxyCharm(CharmBase):
             tracing_protocols=["otlp_http"],
         )
 
+        self.cert_transfer = CertificateTransferRequires(self, "receive-ca-cert")
+
         self.framework.observe(
             self.on.cos_agent_relation_joined,  # pyright: ignore
             self._on_cos_agent_relation_joined,
         )
 
         self.framework.observe(
+            self.on.cos_agent_relation_changed,  # pyright: ignore
+            self._on_cos_agent_relation_changed,
+        )
+
+        self.framework.observe(
             self.on.cos_agent_relation_broken,  # pyright: ignore
             self._on_cos_agent_relation_broken,
+        )
+
+        self.framework.observe(
+            self.cert_transfer.on.certificate_set_updated,  # pyright: ignore
+            self._on_cert_transfer_available,
+        )
+
+        self.framework.observe(
+            self.cert_transfer.on.certificates_removed,  # pyright: ignore
+            self._on_cert_transfer_removed,
         )
 
         self.vector = VectorProvider(self)
@@ -308,8 +330,24 @@ class COSProxyCharm(CharmBase):
         self.metrics_aggregator.update_alerts()
         self._reconcile_charm_tracing()
 
+    def _on_cos_agent_relation_changed(self, _):
+        self._reconcile_charm_tracing()
+
     def _on_cos_agent_relation_broken(self, _):
         self._stored.have_gagent = False
+
+    def _on_cert_transfer_available(self, event: CertificatesAvailableEvent):
+        """Write received CA certificates to disk and reconcile tracing."""
+        CA_CERT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        certs = "\n\n".join(event.certificates)
+        CA_CERT_PATH.write_text(certs + "\n")
+        self._reconcile_charm_tracing()
+
+    def _on_cert_transfer_removed(self, _: CertificatesRemovedEvent):
+        """Remove CA certificate file and reconcile tracing."""
+        if CA_CERT_PATH.exists():
+            CA_CERT_PATH.unlink()
+        self._reconcile_charm_tracing()
 
     def _delete_existing_dashboard_files(self, dashboards_dir: str):
         directory = Path(dashboards_dir)
