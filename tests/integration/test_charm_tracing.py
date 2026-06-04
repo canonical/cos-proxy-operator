@@ -49,7 +49,10 @@ def test_deploy_cos_proxy(juju: Juju, charm):
 @when("an opentelemetry-collector charm is deployed")
 def test_deploy_otel_collector(juju: Juju):
     """Deploy the opentelemetry-collector charm."""
-    config = {"tracing_sampling_rate_workload": 100}
+    config = {
+        "tracing_sampling_rate_workload": 100,
+        "debug_exporter_for_traces": True,
+    }
     juju.deploy(OTEL_COLLECTOR_APP_NAME, channel="dev/edge", base=APP_BASE, config=config)
 
 

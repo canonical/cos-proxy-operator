@@ -226,7 +226,8 @@ def test_charm_tracing_configured(remote_tls, tmp_path):
             ctx.run(ctx.on.start(), state=state_in)
             mock_set_destination.assert_called_with(
                 url=url + "/v1/traces",
-                ca=str(mock_ca_cert) if remote_tls else None,
+                # ops_tracing expects PEM bundle content, not path
+                ca="cert1\n\ncert2\n\n" if remote_tls else None,
             )
 
 

@@ -320,9 +320,11 @@ class COSProxyCharm(CharmBase):
         endpoint, ca_cert_path = charm_tracing_config(self.cos_agent, CA_CERT_PATH)
         if not endpoint:
             return
+        # Read the CA cert content if a path was returned (ops_tracing expects PEM bundle)
+        ca_cert = Path(ca_cert_path).read_text() if ca_cert_path else None
         ops_tracing.set_destination(
             url=endpoint + "/v1/traces",
-            ca=ca_cert_path,
+            ca=ca_cert,
         )
 
     def _on_cos_agent_relation_joined(self, _):
