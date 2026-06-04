@@ -51,7 +51,7 @@ def test_deploy_cos_proxy(juju: Juju, charm):
 def test_deploy_otel_collector(juju: Juju):
     """Deploy the opentelemetry-collector charm."""
     config = {"tracing_sampling_rate_workload": 100}
-    juju.deploy(OTEL_COLLECTOR_APP_NAME, channel=COS_CHANNEL, base=APP_BASE, config=config)
+    juju.deploy(OTEL_COLLECTOR_APP_NAME, channel="dev/edge", base=APP_BASE, config=config)
 
 
 @pytest.mark.setup
