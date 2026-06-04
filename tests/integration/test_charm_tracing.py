@@ -10,7 +10,6 @@ from assertions import assert_pattern_in_snap_logs
 from conftest import (
     APP_BASE,
     APP_NAME,
-    COS_CHANNEL,
     OTEL_COLLECTOR_APP_NAME,
     patch_otel_collector_log_level,
 )
