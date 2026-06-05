@@ -1,6 +1,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 import scenario
 
 from charm import COSProxyCharm
@@ -193,3 +194,93 @@ def test_deduplicated_scrape_jobs():
     # AND there are no duplicate scrape jobs
     # Note: using lib.charms.prometheus_k8s.v0.prometheus_scrape._dedupe_list
     assert scrape_jobs == _dedupe_list(scrape_jobs)
+
+
+@pytest.mark.parametrize("remote_tls", (False, True))
+def test_charm_tracing_configured(remote_tls, tmp_path):
+    """Test that charm tracing is configured when cos-agent relation provides tracing endpoint."""
+    ctx = scenario.Context(COSProxyCharm)
+    url = f"http{'s' if remote_tls else ''}://1.2.3.4:4318"
+    cos_agent_relation = scenario.Relation(
+        endpoint="cos-agent",
+        remote_units_data={
+            0: {
+                "receivers": json.dumps(
+                    [{"protocol": {"name": "otlp_http", "type": "http"}, "url": url}]
+                )
+            }
+        },
+    )
+    receive_ca_relation = scenario.Relation(
+        endpoint="receive-ca-cert",
+        remote_app_data={"certificates": json.dumps(["cert1", "cert2"])},
+    )
+
+    mock_ca_cert = tmp_path / "receive-ca-cert.crt"
+    mock_ca_cert.write_text("cert1\n\ncert2\n\n")
+
+    state_in = scenario.State(leader=True, relations=[cos_agent_relation, receive_ca_relation])
+
+    with patch("charm.CA_CERT_PATH", mock_ca_cert):
+        with patch("ops_tracing.set_destination") as mock_set_destination:
+            ctx.run(ctx.on.start(), state=state_in)
+            mock_set_destination.assert_called_with(
+                url=url + "/v1/traces",
+                # ops_tracing expects PEM bundle content, not path
+                ca="cert1\n\ncert2\n\n" if remote_tls else None,
+            )
+
+
+def test_charm_tracing_not_configured_without_cos_agent():
+    """Test that charm tracing is not configured when no cos-agent relation exists."""
+    ctx = scenario.Context(COSProxyCharm)
+    state_in = scenario.State(leader=True, relations=[])
+
+    with patch("ops_tracing.set_destination") as mock_set_destination:
+        ctx.run(ctx.on.start(), state=state_in)
+        mock_set_destination.assert_not_called()
+
+
+def test_charm_tracing_configured_on_relation_changed(tmp_path):
+    """Test that charm tracing is configured when cos-agent relation data changes."""
+    ctx = scenario.Context(COSProxyCharm)
+    url = "http://1.2.3.4:4318"
+    cos_agent_relation = scenario.Relation(
+        endpoint="cos-agent",
+        remote_units_data={
+            0: {
+                "receivers": json.dumps(
+                    [{"protocol": {"name": "otlp_http", "type": "http"}, "url": url}]
+                )
+            }
+        },
+    )
+
+    state_in = scenario.State(leader=True, relations=[cos_agent_relation])
+
+    with patch("ops_tracing.set_destination") as mock_set_destination:
+        ctx.run(ctx.on.relation_changed(cos_agent_relation), state=state_in)
+        mock_set_destination.assert_called_with(
+            url=url + "/v1/traces",
+            ca=None,
+        )
+
+
+def test_cert_transfer_writes_certificates(tmp_path):
+    """Test that certificate transfer events write certs to disk."""
+    mock_ca_cert = tmp_path / "receive-ca-cert.crt"
+
+    ctx = scenario.Context(COSProxyCharm)
+    cert_relation = scenario.Relation(
+        endpoint="receive-ca-cert",
+        remote_app_data={"certificates": json.dumps(["cert1", "cert2"])},
+    )
+
+    state_in = scenario.State(leader=True, relations=[cert_relation])
+
+    with patch("charm.CA_CERT_PATH", mock_ca_cert):
+        ctx.run(ctx.on.relation_changed(cert_relation), state=state_in)
+        assert mock_ca_cert.exists()
+        content = mock_ca_cert.read_text()
+        assert "cert1" in content
+        assert "cert2" in content
