@@ -138,6 +138,92 @@ class TestEndpointAggregator(unittest.TestCase):
         self.harness.set_leader(True)
         self.harness.begin_with_initial_hooks()
 
+    def _downstream_payload_for(self, publish):
+        harness = Harness(EndpointAggregatorCharm, meta=AGGREGATOR_META)
+        self.addCleanup(harness.cleanup)
+        harness.set_model_info(name="testmodel", uuid="12de4fae-06cc-4ceb-9089-567be09fec78")
+        harness.set_leader(True)
+        harness.begin_with_initial_hooks()
+        prometheus_rel_id = harness.add_relation(PROMETHEUS_RELATION, "prometheus")
+        harness.add_relation_unit(prometheus_rel_id, "prometheus/0")
+
+        publish(harness.charm._aggregator)
+
+        relation_data = harness.get_relation_data(prometheus_rel_id, harness.model.app.name)
+        return {
+            "scrape_jobs": json.loads(relation_data["scrape_jobs"]),
+            "alert_rules": json.loads(relation_data["alert_rules"]),
+        }
+
+    def test_batch_update_preserves_sequential_scrape_job_and_alert_rule_payloads(self):
+        # GIVEN scrape jobs and alert rules equivalent to the NRPE monitors-generated payload.
+        target_jobs = [
+            {
+                "targets": {"nrpe/0": {"hostname": "10.0.0.10", "port": "1234"}},
+                "app_name": "nrpe",
+                "kwargs": {"metrics_path": "/metrics", "scheme": "http"},
+            },
+            {
+                "targets": {"nrpe/1": {"hostname": "10.0.0.11", "port": "1234"}},
+                "app_name": "nrpe",
+                "kwargs": {"metrics_path": "/metrics", "scheme": "http"},
+            },
+            {
+                "targets": {"aggregator-tester/0": {"hostname": "10.0.0.20", "port": "6000"}},
+                "app_name": "aggregator-tester",
+            },
+        ]
+        alert_rules = [
+            {
+                "name": "nrpe_0",
+                "unit_rules": {
+                    "alert": "CheckConntrack0",
+                    "expr": "probe_success == 0",
+                    "labels": {
+                        "juju_application": "nrpe",
+                        "juju_unit": "nrpe/0",
+                        "severity": "warning",
+                    },
+                    "annotations": {"summary": "check failed"},
+                },
+                "label_rules": False,
+            },
+            {
+                "name": "nrpe_1",
+                "unit_rules": {
+                    "alert": "CheckConntrack1",
+                    "expr": "probe_success == 0",
+                    "labels": {
+                        "juju_application": "nrpe",
+                        "juju_unit": "nrpe/1",
+                        "severity": "warning",
+                    },
+                    "annotations": {"summary": "check failed"},
+                },
+                "label_rules": False,
+            },
+        ]
+
+        def publish_sequential(aggregator):
+            for job in target_jobs:
+                aggregator.set_target_job_data(
+                    job["targets"], job["app_name"], **job.get("kwargs", {})
+                )
+            for rule in alert_rules:
+                aggregator.set_alert_rule_data(
+                    rule["name"], rule["unit_rules"], label_rules=rule["label_rules"]
+                )
+
+        def publish_batched(aggregator):
+            aggregator.set_target_job_and_alert_rule_data_batch(target_jobs, alert_rules)
+
+        # WHEN the same logical changes are applied through the old sequential API and the new
+        # batch API, THEN the downstream prometheus payloads are identical.
+        self.assertEqual(
+            self._downstream_payload_for(publish_sequential),
+            self._downstream_payload_for(publish_batched),
+        )
+
     def test_adding_prometheus_then_target_forwards_a_labeled_scrape_job(self):
         prometheus_rel_id = self.harness.add_relation(PROMETHEUS_RELATION, "prometheus")
         self.harness.add_relation_unit(prometheus_rel_id, "prometheus/0")

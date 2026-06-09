@@ -673,40 +673,65 @@ class COSProxyCharm(CharmBase):
         stored state.
         """
         if event and isinstance(event, NrpeTargetsChangedEvent):
-            for target in event.removed_targets:
-                self.metrics_aggregator.remove_prometheus_jobs(target)  # type: ignore
-
-            for alert in event.removed_alerts:
-                self.metrics_aggregator.remove_alert_rules(
-                    self.metrics_aggregator.group_name(alert["labels"]["juju_unit"]),  # type: ignore
-                    alert["labels"]["juju_unit"],  # type: ignore
-                )
-
             nrpes = cast(List[Dict[str, Any]], event.current_targets)
             current_alerts = event.current_alerts
+            removed_targets = event.removed_targets
+            removed_alerts = event.removed_alerts
         else:
             # If the event arg is None, then the stored state value is already up-to-date.
             nrpes = self.nrpe_exporter.endpoints()
             current_alerts = self.nrpe_exporter.alerts()
+            removed_targets = []
+            removed_alerts = []
 
         self._modify_enrichment_file(endpoints=nrpes)
 
-        # Add scrape jobs for prometheus and cos-agent relations
-        for nrpe in nrpes:
-            self.metrics_aggregator.set_target_job_data(
-                nrpe["target"], nrpe["app_name"], **nrpe["additional_fields"]
-            )
+        if not self.unit.is_leader():
+            return
+
+        removed_target_jobs = [
+            {"job_name": target, "unit_name": ""} for target in removed_targets
+        ]
+        removed_alert_rules = [
+            {
+                "group_name": self.metrics_aggregator.group_name(
+                    alert["labels"]["juju_unit"]  # type: ignore
+                ),
+                "unit_name": alert["labels"]["juju_unit"],  # type: ignore
+            }
+            for alert in removed_alerts
+        ]
+
+        # Add scrape jobs for prometheus and cos-agent relations.
+        target_jobs = [
+            {
+                "targets": nrpe["target"],
+                "app_name": nrpe["app_name"],
+                "kwargs": nrpe["additional_fields"],
+            }
+            for nrpe in nrpes
+        ]
+
         # NOTE: We never stop vector once started, so we assume that within an NRPE event, the
         #       vector target can be scraped in the future
         vector_target = {self.unit.name: {"hostname": self.host, "port": VECTOR_PORT}}
-        self.metrics_aggregator.set_target_job_data(vector_target, self.app.name)
+        target_jobs.append({"targets": vector_target, "app_name": self.app.name})
 
-        for alert in current_alerts:
-            self.metrics_aggregator.set_alert_rule_data(
-                re.sub(r"/", "_", alert["labels"]["juju_unit"]),  # type: ignore
-                alert,  # type: ignore
-                label_rules=False,
-            )
+        alert_rules = [
+            {
+                "name": re.sub(r"/", "_", alert["labels"]["juju_unit"]),  # type: ignore
+                "unit_rules": alert,
+                "label_rules": False,
+            }
+            for alert in current_alerts
+        ]
+
+        self.metrics_aggregator.set_target_job_and_alert_rule_data_batch(
+            target_jobs,
+            alert_rules,
+            removed_target_jobs=removed_target_jobs,
+            removed_alert_rules=removed_alert_rules,
+        )
 
     def _set_status(self, _event):
         # Put charm in blocked status if all incoming relations are missing

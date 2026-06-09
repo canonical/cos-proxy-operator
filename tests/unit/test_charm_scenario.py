@@ -1,4 +1,5 @@
 import json
+import socket
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -79,6 +80,49 @@ def test_scrape_jobs_are_forwarded_on_adding_prometheus_then_targets(mock_open):
     # Assert
     actual_jobs = json.loads(relation.local_app_data.get("scrape_jobs", "[]"))
     assert actual_jobs == expected_jobs
+
+
+@patch("builtins.open", new_callable=MagicMock)
+def test_large_relation_fan_in_repeats_reverse_dns_for_every_target_on_every_event(mock_open):
+    # GIVEN one application with many units related through cos-proxy to prometheus.
+    # This matches "workload -[200..1]-> cos-proxy -[1:1]-> prometheus".
+    unit_count = 200
+    event_count = 4
+    prometheus_scrape_relation = scenario.Relation(
+        "downstream-prometheus-scrape",
+        remote_app_name="cos-prometheus",
+        remote_units_data={0: {}},
+    )
+    prometheus_target_relation = scenario.Relation(
+        "prometheus-target",
+        remote_app_name="target-app",
+        remote_units_data={
+            unit_id: {
+                "hostname": f"10.0.0.{unit_id}",
+                "port": "1234",
+            }
+            for unit_id in range(unit_count)
+        },
+    )
+    state = scenario.State(
+        leader=True,
+        relations=[prometheus_scrape_relation, prometheus_target_relation],
+        config={"forward_alert_rules": True},
+    )
+    ctx = scenario.Context(COSProxyCharm)
+
+    # WHEN the same large relation emits multiple changed events and reverse DNS misses.
+    # The patched lookup raises immediately so the test proves call amplification without waiting.
+    with patch.object(socket, "gethostbyaddr", side_effect=OSError) as gethostbyaddr:
+        for _ in range(event_count):
+            prometheus_target_relation = state.get_relation(prometheus_target_relation.id)
+            state = ctx.run(
+                ctx.on.relation_changed(relation=prometheus_target_relation),
+                state=state,
+            )
+
+    # THEN each hook invocation performs at most one reverse DNS lookup per target.
+    assert gethostbyaddr.call_count <= unit_count * event_count
 
 
 @patch.object(COSProxyCharm, "_modify_enrichment_file", lambda *a, **kw: None)

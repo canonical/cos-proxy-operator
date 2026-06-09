@@ -1,7 +1,9 @@
 .idea/
 venv/
+.venv/
 build/
 *.charm
+.benchmark/
 
 .coverage
 __pycache__/
