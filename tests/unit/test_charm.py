@@ -971,7 +971,8 @@ class TestCreateDashboardFiles(unittest.TestCase):
     def test_own_unit_data_is_ignored(self):
         """Data written to cos-proxy's own side of the relation is not picked up (regression
         test for the original bug where relation.data[self.unit] was used instead of the
-        remote unit)."""
+        remote unit).
+        """
         dashboard_content = {"title": "My Dashboard", "panels": []}
         rel_id = self.harness.add_relation("dashboards", "some-app")
         self.harness.add_relation_unit(rel_id, "some-app/0")
@@ -990,7 +991,8 @@ class TestCreateDashboardFiles(unittest.TestCase):
 
     def test_direct_format_creates_file_from_remote_unit(self):
         """dashboard+name keys in the remote unit databag (rabbitmq-server style) produce a
-        file whose content is the parsed dashboard JSON."""
+        file whose content is the parsed dashboard JSON.
+        """
         dashboard_content = {"title": "RabbitMQ-Overview", "uid": "Kn5xm-gZk"}
         rel_id = self.harness.add_relation("dashboards", "rabbitmq-server")
         self.harness.add_relation_unit(rel_id, "rabbitmq-server/0")
