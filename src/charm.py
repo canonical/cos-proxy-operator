@@ -377,7 +377,7 @@ class COSProxyCharm(CharmBase):
         and the ``__inputs`` / ``__requires`` arrays are removed because they are only
         meaningful during the Grafana UI import flow.
         """
-        _PLUGIN_TO_COS_VAR: Dict[str, str] = {
+        _plugin_to_cos_var: Dict[str, str] = {
             "prometheus": "${prometheusds}",
             "loki": "${lokids}",
         }
@@ -393,7 +393,7 @@ class COSProxyCharm(CharmBase):
             if inp.get("type") != "datasource":
                 continue
             name = inp.get("name", "")
-            cos_var = _PLUGIN_TO_COS_VAR.get(inp.get("pluginId", ""))
+            cos_var = _plugin_to_cos_var.get(inp.get("pluginId", ""))
             if name and cos_var:
                 # Replace every occurrence of "${NAME}" (as it appears in the JSON string)
                 dash_str = dash_str.replace(f'"${{{name}}}"', f'"{cos_var}"')
