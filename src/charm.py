@@ -354,8 +354,50 @@ class COSProxyCharm(CharmBase):
     def _delete_existing_dashboard_files(self, dashboards_dir: str):
         directory = Path(dashboards_dir)
         if directory.exists():
-            for file_path in directory.glob("request_*.json"):
+            for file_path in directory.glob("*.json"):
                 file_path.unlink()
+
+    @staticmethod
+    def _sanitize_datasources(dashboard: dict) -> dict:
+        """Resolve Grafana export-format ``__inputs`` datasource symbols.
+
+        Dashboards exported from the Grafana UI embed a ``__inputs`` array that maps
+        symbolic names (e.g. ``DS_PROMETHEUS``) to datasource plugin types.  Panels and
+        template variables then reference those names as Grafana template variables, e.g.
+        ``"datasource": "${DS_PROMETHEUS}"``.
+
+        The COS Grafana provisioning pipeline replaces *some* of these references (panel
+        datasource fields) but misses others (template variable datasource fields), which
+        causes Grafana to show "Datasource ${DS_PROMETHEUS} was not found" when the
+        dashboard is opened.
+
+        This method performs a complete, global substitution: every ``"${INPUT_NAME}"``
+        string in the serialised JSON is replaced with the appropriate COS-standard
+        datasource variable (``${prometheusds}`` for Prometheus, ``${lokids}`` for Loki),
+        and the ``__inputs`` / ``__requires`` arrays are removed because they are only
+        meaningful during the Grafana UI import flow.
+        """
+        _PLUGIN_TO_COS_VAR: Dict[str, str] = {
+            "prometheus": "${prometheusds}",
+            "loki": "${lokids}",
+        }
+
+        inputs = dashboard.pop("__inputs", [])
+        dashboard.pop("__requires", None)
+
+        if not inputs:
+            return dashboard
+
+        dash_str = json.dumps(dashboard)
+        for inp in inputs:
+            if inp.get("type") != "datasource":
+                continue
+            name = inp.get("name", "")
+            cos_var = _PLUGIN_TO_COS_VAR.get(inp.get("pluginId", ""))
+            if name and cos_var:
+                # Replace every occurrence of "${NAME}" (as it appears in the JSON string)
+                dash_str = dash_str.replace(f'"${{{name}}}"', f'"{cos_var}"')
+        return json.loads(dash_str)
 
     def _create_dashboard_files(self, dashboards_dir: str):
         dashboards_rel = self._dashboard_aggregator._target_relation
@@ -364,12 +406,26 @@ class COSProxyCharm(CharmBase):
         directory.mkdir(parents=True, exist_ok=True)
 
         for relation in self.model.relations[dashboards_rel]:
-            for k in relation.data[self.unit].keys():
-                if k.startswith("request_"):
-                    dashboard = json.loads(relation.data[self.unit][k])["dashboard"]  # type: ignore
-                    dashboard_file_path = (
-                        directory / f"request_{k}.json"
-                    )  # Using the key as filename
+            for remote_unit in relation.units:
+                unit_data = relation.data[remote_unit]
+
+                # Handle the reactive request_* format used by some ops/charm-helpers charms.
+                for k in unit_data.keys():
+                    if k.startswith("request_"):
+                        dashboard = self._sanitize_datasources(
+                            json.loads(unit_data[k])["dashboard"]  # type: ignore
+                        )
+                        dashboard_file_path = directory / f"request_{k}.json"
+                        with open(dashboard_file_path, "w") as dashboard_file:
+                            json.dump(dashboard, dashboard_file, indent=4)
+
+                # Handle the direct dashboard+name format used by charm-helpers charms
+                # (e.g. rabbitmq-server), where the provider sets a "dashboard" key
+                # containing the raw dashboard JSON and a "name" key with the title.
+                if "dashboard" in unit_data and "name" in unit_data:
+                    dashboard = self._sanitize_datasources(json.loads(unit_data["dashboard"]))
+                    safe_name = unit_data["name"].replace(" ", "_").replace("/", "_")
+                    dashboard_file_path = directory / f"dashboard_{safe_name}.json"
                     with open(dashboard_file_path, "w") as dashboard_file:
                         json.dump(dashboard, dashboard_file, indent=4)
 

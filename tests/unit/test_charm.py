@@ -18,9 +18,12 @@
 import base64
 import json
 import lzma
+import shutil
 import socket
+import tempfile
 import unittest
 import uuid
+from pathlib import Path
 from unittest.mock import patch
 
 from ops.model import ActiveStatus, BlockedStatus
@@ -932,3 +935,245 @@ class COSProxyCharmTest(unittest.TestCase):
         self.assertEqual(len(dashboards["templates"]), 2)
         self.assertEqual(dashboards["templates"]["prog:| {{ ins"], DUMMY_FIXED_1)
         self.assertEqual(dashboards["templates"]["prog:rent_eno"], DUMMY_FIXED_2)
+
+
+class TestCreateDashboardFiles(unittest.TestCase):
+    """Tests for _create_dashboard_files and _delete_existing_dashboard_files."""
+
+    def setUp(self):
+        self.harness = Harness(COSProxyCharm)
+        self.harness.set_model_info(name="testmodel", uuid="ae3c0b14-9c3a-4262-b560-7a6ad7d3642f")
+        self.addCleanup(self.harness.cleanup)
+        self.harness.begin()
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir)
+
+    def test_request_format_reads_from_remote_unit(self):
+        """request_* keys in the remote unit databag produce a file each."""
+        dashboard_content = {"title": "My Dashboard", "panels": []}
+        rel_id = self.harness.add_relation("dashboards", "some-app")
+        self.harness.add_relation_unit(rel_id, "some-app/0")
+        with self.harness.hooks_disabled():
+            self.harness.update_relation_data(
+                rel_id,
+                "some-app/0",
+                {"request_abc123": json.dumps({"dashboard": dashboard_content})},
+            )
+
+        self.harness.charm._create_dashboard_files(self.tmpdir)
+
+        files = list(Path(self.tmpdir).glob("*.json"))
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0].name, "request_request_abc123.json")
+        with open(files[0]) as f:
+            self.assertEqual(json.load(f), dashboard_content)
+
+    def test_own_unit_data_is_ignored(self):
+        """Data written to cos-proxy's own side of the relation is not picked up (regression
+        test for the original bug where relation.data[self.unit] was used instead of the
+        remote unit)."""
+        dashboard_content = {"title": "My Dashboard", "panels": []}
+        rel_id = self.harness.add_relation("dashboards", "some-app")
+        self.harness.add_relation_unit(rel_id, "some-app/0")
+        # Write request_* into cos-proxy's own unit bag, not the remote unit's bag.
+        with self.harness.hooks_disabled():
+            self.harness.update_relation_data(
+                rel_id,
+                "cos-proxy/0",
+                {"request_abc123": json.dumps({"dashboard": dashboard_content})},
+            )
+
+        self.harness.charm._create_dashboard_files(self.tmpdir)
+
+        files = list(Path(self.tmpdir).glob("*.json"))
+        self.assertEqual(files, [], "no files should be created from own-unit data")
+
+    def test_direct_format_creates_file_from_remote_unit(self):
+        """dashboard+name keys in the remote unit databag (rabbitmq-server style) produce a
+        file whose content is the parsed dashboard JSON."""
+        dashboard_content = {"title": "RabbitMQ-Overview", "uid": "Kn5xm-gZk"}
+        rel_id = self.harness.add_relation("dashboards", "rabbitmq-server")
+        self.harness.add_relation_unit(rel_id, "rabbitmq-server/0")
+        with self.harness.hooks_disabled():
+            self.harness.update_relation_data(
+                rel_id,
+                "rabbitmq-server/0",
+                {
+                    "dashboard": json.dumps(dashboard_content),
+                    "name": "RabbitMQ-Overview",
+                },
+            )
+
+        self.harness.charm._create_dashboard_files(self.tmpdir)
+
+        files = list(Path(self.tmpdir).glob("*.json"))
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0].name, "dashboard_RabbitMQ-Overview.json")
+        with open(files[0]) as f:
+            self.assertEqual(json.load(f), dashboard_content)
+
+    def test_direct_format_name_is_sanitised(self):
+        """Spaces and slashes in the dashboard name are replaced with underscores."""
+        rel_id = self.harness.add_relation("dashboards", "some-app")
+        self.harness.add_relation_unit(rel_id, "some-app/0")
+        with self.harness.hooks_disabled():
+            self.harness.update_relation_data(
+                rel_id,
+                "some-app/0",
+                {
+                    "dashboard": json.dumps({"title": "My Cool Dashboard"}),
+                    "name": "My Cool/Dashboard Name",
+                },
+            )
+
+        self.harness.charm._create_dashboard_files(self.tmpdir)
+
+        files = list(Path(self.tmpdir).glob("*.json"))
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0].name, "dashboard_My_Cool_Dashboard_Name.json")
+
+    def test_dashboard_key_without_name_key_is_ignored(self):
+        """A remote unit that provides a 'dashboard' key but no 'name' key is skipped."""
+        rel_id = self.harness.add_relation("dashboards", "some-app")
+        self.harness.add_relation_unit(rel_id, "some-app/0")
+        with self.harness.hooks_disabled():
+            self.harness.update_relation_data(
+                rel_id,
+                "some-app/0",
+                {"dashboard": json.dumps({"title": "Orphan Dashboard"})},
+            )
+
+        self.harness.charm._create_dashboard_files(self.tmpdir)
+
+        files = list(Path(self.tmpdir).glob("*.json"))
+        self.assertEqual(files, [])
+
+    def test_unrelated_keys_produce_no_files(self):
+        """Remote unit data with neither request_* nor dashboard+name keys creates nothing."""
+        rel_id = self.harness.add_relation("dashboards", "some-app")
+        self.harness.add_relation_unit(rel_id, "some-app/0")
+        with self.harness.hooks_disabled():
+            self.harness.update_relation_data(
+                rel_id, "some-app/0", {"egress-subnets": "10.0.0.1/32"}
+            )
+
+        self.harness.charm._create_dashboard_files(self.tmpdir)
+
+        files = list(Path(self.tmpdir).glob("*.json"))
+        self.assertEqual(files, [])
+
+    def test_delete_removes_request_and_dashboard_files(self):
+        """_delete_existing_dashboard_files removes both request_* and dashboard_* JSON files."""
+        Path(self.tmpdir, "request_request_abc.json").write_text("{}")
+        Path(self.tmpdir, "dashboard_RabbitMQ-Overview.json").write_text("{}")
+        Path(self.tmpdir, "notes.txt").write_text("keep me")
+
+        self.harness.charm._delete_existing_dashboard_files(self.tmpdir)
+
+        remaining = [p.name for p in Path(self.tmpdir).iterdir()]
+        self.assertEqual(remaining, ["notes.txt"])
+
+    def test_delete_on_missing_directory_does_not_raise(self):
+        """_delete_existing_dashboard_files is a no-op when the directory does not exist."""
+        nonexistent = str(Path(self.tmpdir) / "nonexistent")
+        # Should not raise.
+        self.harness.charm._delete_existing_dashboard_files(nonexistent)
+
+
+class TestSanitizeDatasources(unittest.TestCase):
+    """Unit tests for COSProxyCharm._sanitize_datasources."""
+
+    # Convenience alias so tests don't depend on a full harness.
+    _fn = staticmethod(COSProxyCharm._sanitize_datasources)
+
+    def test_prometheus_input_replaced_with_prometheusds(self):
+        dashboard = {
+            "__inputs": [
+                {"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus"}
+            ],
+            "panels": [{"datasource": "${DS_PROMETHEUS}"}],
+        }
+        result = self._fn(dashboard)
+        self.assertEqual(result["panels"][0]["datasource"], "${prometheusds}")
+
+    def test_loki_input_replaced_with_lokids(self):
+        dashboard = {
+            "__inputs": [
+                {"name": "DS_LOKI", "type": "datasource", "pluginId": "loki"}
+            ],
+            "panels": [{"datasource": "${DS_LOKI}"}],
+        }
+        result = self._fn(dashboard)
+        self.assertEqual(result["panels"][0]["datasource"], "${lokids}")
+
+    def test_template_variable_datasource_field_is_also_replaced(self):
+        """The datasource field inside template variable definitions must be updated too.
+
+        This is the exact scenario that caused the 'Datasource ${DS_PROMETHEUS} was not
+        found' error: the COS pipeline replaced panel datasource refs but missed the
+        datasource field inside query-type template variables.
+        """
+        dashboard = {
+            "__inputs": [
+                {"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus"}
+            ],
+            "panels": [{"datasource": "${DS_PROMETHEUS}"}],
+            "templating": {
+                "list": [
+                    {
+                        "name": "namespace",
+                        "type": "query",
+                        "datasource": "${DS_PROMETHEUS}",
+                        "query": "label_values(up, namespace)",
+                    }
+                ]
+            },
+        }
+        result = self._fn(dashboard)
+        self.assertEqual(result["panels"][0]["datasource"], "${prometheusds}")
+        self.assertEqual(
+            result["templating"]["list"][0]["datasource"], "${prometheusds}"
+        )
+
+    def test_inputs_array_is_removed(self):
+        dashboard = {
+            "__inputs": [
+                {"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus"}
+            ],
+            "title": "My Dashboard",
+        }
+        result = self._fn(dashboard)
+        self.assertNotIn("__inputs", result)
+
+    def test_requires_array_is_removed(self):
+        dashboard = {
+            "__requires": [{"type": "grafana", "id": "grafana", "version": "7.0.0"}],
+            "title": "My Dashboard",
+        }
+        result = self._fn(dashboard)
+        self.assertNotIn("__requires", result)
+
+    def test_unknown_plugin_is_left_unchanged(self):
+        """Datasource inputs with unknown plugin types are not substituted."""
+        dashboard = {
+            "__inputs": [
+                {"name": "DS_ELASTIC", "type": "datasource", "pluginId": "elasticsearch"}
+            ],
+            "panels": [{"datasource": "${DS_ELASTIC}"}],
+        }
+        result = self._fn(dashboard)
+        self.assertEqual(result["panels"][0]["datasource"], "${DS_ELASTIC}")
+
+    def test_no_inputs_returns_dashboard_unchanged_except_requires(self):
+        dashboard = {"title": "Plain", "panels": [{"datasource": "${prometheusds}"}]}
+        result = self._fn(dashboard)
+        self.assertEqual(result, {"title": "Plain", "panels": [{"datasource": "${prometheusds}"}]})
+
+    def test_non_datasource_input_type_is_ignored(self):
+        dashboard = {
+            "__inputs": [{"name": "SOME_CONST", "type": "constant", "value": "42"}],
+            "panels": [{"title": "Panel"}],
+        }
+        result = self._fn(dashboard)
+        self.assertNotIn("__inputs", result)
+        self.assertEqual(result["panels"], [{"title": "Panel"}])
