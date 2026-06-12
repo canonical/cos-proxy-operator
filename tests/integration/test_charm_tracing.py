@@ -35,7 +35,11 @@ def _trigger_update_status_event(juju: Juju, unit_name: str):
 def _otel_collector_ready(status):
     """Return True once the collector reaches a stable post-integration status."""
     app = status.apps.get(OTEL_COLLECTOR_APP_NAME)
-    return bool(app and app.app_status.current in {"waiting", "blocked"})
+    if app is None:
+        return False
+    if app.app_status is None:
+        return False
+    return app.app_status.current in {"waiting", "blocked"}
 
 
 @pytest.mark.setup
