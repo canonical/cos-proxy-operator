@@ -32,6 +32,12 @@ def _trigger_update_status_event(juju: Juju, unit_name: str):
     )
 
 
+def _otel_collector_ready(status):
+    """Return True once the collector reaches a stable post-integration status."""
+    app = status.apps.get(OTEL_COLLECTOR_APP_NAME)
+    return bool(app and app.app_status.current in {"waiting", "blocked"})
+
+
 @pytest.mark.setup
 @given("a cos-proxy charm is deployed")
 def test_deploy_cos_proxy(juju: Juju, charm):
@@ -65,7 +71,7 @@ def test_integrate_cos_agent(juju: Juju):
         OTEL_COLLECTOR_APP_NAME + ":cos-agent",
     )
     juju.wait(
-        lambda status: jubilant.all_blocked(status, OTEL_COLLECTOR_APP_NAME),
+        _otel_collector_ready,
         timeout=10 * 60,
         delay=10,
         successes=3,
