@@ -1,0 +1,30 @@
+Metadata-Version: 2.4
+Name: cos-proxy
+Version: 0.0
+Requires-Python: ~=3.8
+License-File: LICENSE
+Requires-Dist: ops[tracing]<3
+Requires-Dist: jinja2<3
+Requires-Dist: markupsafe==2.0.1
+Requires-Dist: pydantic>2
+Requires-Dist: cosl
+Requires-Dist: cryptography
+Requires-Dist: pyyaml
+Provides-Extra: dev
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: codespell; extra == "dev"
+Requires-Dist: pyright<1.1.399; extra == "dev"
+Requires-Dist: responses==0.20.0; extra == "dev"
+Requires-Dist: httpcore==0.14.7; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: coverage[toml]; extra == "dev"
+Requires-Dist: ops[testing]; extra == "dev"
+Requires-Dist: fs; extra == "dev"
+Requires-Dist: deepdiff; extra == "dev"
+Requires-Dist: pytest-interface-tester; extra == "dev"
+Requires-Dist: jubilant; extra == "dev"
+Requires-Dist: pytest-jubilant>=2; extra == "dev"
+Requires-Dist: pytest-bdd; extra == "dev"
+Requires-Dist: tenacity; extra == "dev"
+Requires-Dist: sh; extra == "dev"
+Dynamic: license-file
