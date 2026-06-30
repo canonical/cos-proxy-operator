@@ -1,7 +1,0 @@
-charm
-grafana_dashboards
-metrics_endpoint_aggregator
-nrpe_exporter
-prometheus_alert_rules
-scrape_config
-vector
