@@ -818,3 +818,91 @@ class TestEndpointAggregatorWithRelabeling(unittest.TestCase):
         ]
         self.maxDiff = None
         self.assertListEqual(scrape_jobs, expected_jobs)
+
+
+class TestGetTargetsIngressAddressFallback(unittest.TestCase):
+    """Tests for _get_targets() ingress-address fallback.
+
+    When a charm-helpers/reactive charm publishes ``ingress-address`` (and
+    optionally ``port``) but not ``hostname``, _get_targets() must still
+    include the unit in the scrape targets using the ingress-address.
+    RabbitMQ is a concrete example of such a charm.
+    """
+
+    def setUp(self):
+        self.harness = Harness(EndpointAggregatorCharm, meta=AGGREGATOR_META)
+        self.addCleanup(self.harness.cleanup)
+        self.harness.set_model_info(name="testmodel", uuid="12de4fae-06cc-4ceb-9089-567be09fec78")
+        self.harness.set_leader(True)
+        self.harness.begin_with_initial_hooks()
+
+    def _get_scrape_jobs(self, rel_id):
+        prometheus_rel_data = self.harness.get_relation_data(
+            rel_id, self.harness.model.app.name
+        )
+        return json.loads(prometheus_rel_data.get("scrape_jobs", "[]"))
+
+    def test_ingress_address_used_when_hostname_absent(self):
+        """Unit with only ingress-address (no hostname) produces a scrape target."""
+        prometheus_rel_id = self.harness.add_relation(PROMETHEUS_RELATION, "prometheus")
+        self.harness.add_relation_unit(prometheus_rel_id, "prometheus/0")
+
+        target_rel_id = self.harness.add_relation(SCRAPE_TARGET_RELATION, "rabbitmq-server")
+        self.harness.add_relation_unit(target_rel_id, "rabbitmq-server/0")
+
+        self.harness.update_relation_data(
+            target_rel_id,
+            "rabbitmq-server/0",
+            {
+                "egress-subnets": "10.171.142.164/32",
+                "ingress-address": "10.171.142.164",
+                "port": "15692",
+                "private-address": "10.171.142.164",
+                # NOTE: no "hostname" key — mirrors real rabbitmq-server behaviour
+            },
+        )
+
+        scrape_jobs = self._get_scrape_jobs(prometheus_rel_id)
+        self.assertEqual(len(scrape_jobs), 1, "expected exactly one scrape job")
+        targets = scrape_jobs[0]["static_configs"][0]["targets"]
+        self.assertEqual(targets, ["10.171.142.164:15692"])
+
+    def test_hostname_takes_precedence_over_ingress_address(self):
+        """When both hostname and ingress-address are present, hostname wins."""
+        prometheus_rel_id = self.harness.add_relation(PROMETHEUS_RELATION, "prometheus")
+        self.harness.add_relation_unit(prometheus_rel_id, "prometheus/0")
+
+        target_rel_id = self.harness.add_relation(SCRAPE_TARGET_RELATION, "target-app")
+        self.harness.add_relation_unit(target_rel_id, "target-app/0")
+
+        self.harness.update_relation_data(
+            target_rel_id,
+            "target-app/0",
+            {
+                "hostname": "10.181.49.93",
+                "ingress-address": "192.168.0.1",  # different — hostname must win
+                "port": "9103",
+            },
+        )
+
+        scrape_jobs = self._get_scrape_jobs(prometheus_rel_id)
+        self.assertEqual(len(scrape_jobs), 1)
+        targets = scrape_jobs[0]["static_configs"][0]["targets"]
+        self.assertEqual(targets, ["10.181.49.93:9103"])
+
+    def test_unit_skipped_when_neither_hostname_nor_ingress_address(self):
+        """Unit with neither hostname nor ingress-address produces no scrape target."""
+        prometheus_rel_id = self.harness.add_relation(PROMETHEUS_RELATION, "prometheus")
+        self.harness.add_relation_unit(prometheus_rel_id, "prometheus/0")
+
+        target_rel_id = self.harness.add_relation(SCRAPE_TARGET_RELATION, "target-app")
+        self.harness.add_relation_unit(target_rel_id, "target-app/0")
+
+        self.harness.update_relation_data(
+            target_rel_id,
+            "target-app/0",
+            {"port": "9103"},  # no hostname, no ingress-address
+        )
+
+        scrape_jobs = self._get_scrape_jobs(prometheus_rel_id)
+        self.assertEqual(scrape_jobs, [], "expected no scrape jobs")
