@@ -30,6 +30,7 @@ Currently supported interfaces are for:
     * NRPE Endpoints
 """
 
+import copy
 import json
 import logging
 import platform
@@ -382,6 +383,7 @@ class COSProxyCharm(CharmBase):
             "loki": "${lokids}",
         }
 
+        dashboard = copy.deepcopy(dashboard)
         inputs = dashboard.pop("__inputs", [])
         dashboard.pop("__requires", None)
 

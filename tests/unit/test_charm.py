@@ -1172,3 +1172,18 @@ class TestSanitizeDatasources(unittest.TestCase):
         result = self._fn(dashboard)
         self.assertNotIn("__inputs", result)
         self.assertEqual(result["panels"], [{"title": "Panel"}])
+
+    def test_input_dict_is_not_mutated(self):
+        """_sanitize_datasources must not modify the caller's dictionary."""
+        dashboard = {
+            "__inputs": [
+                {"name": "DS_PROMETHEUS", "type": "datasource", "pluginId": "prometheus"}
+            ],
+            "__requires": [{"type": "grafana"}],
+            "panels": [{"datasource": "${DS_PROMETHEUS}"}],
+        }
+        original_keys = set(dashboard.keys())
+        self._fn(dashboard)
+        self.assertEqual(set(dashboard.keys()), original_keys, "caller's dict must not be mutated")
+        self.assertIn("__inputs", dashboard)
+        self.assertIn("__requires", dashboard)
