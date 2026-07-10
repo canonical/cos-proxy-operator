@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+# Copyright 2025 Canonical Ltd.
+# See LICENSE file for licensing details.
+
+"""Integration tests for scrape job propagation: telegraf → cos-proxy → otelcol."""
+
+import jubilant
+import pytest
+from assertions import assert_pattern_absent_in_otelcol_config, assert_pattern_in_snap_logs
+from conftest import (
+    APP_NAME,
+    OTEL_COLLECTOR_APP_NAME,
+    TELEGRAF_APP_NAME,
+    TELEGRAF_BASE,
+    UBUNTU_APP_NAME,
+    deploy_otelcol,
+    patch_otel_collector_log_level,
+)
+from jubilant import Juju
+from tenacity import retry, stop_after_attempt, wait_fixed
+
+pytestmark = pytest.mark.usefixtures("patch_update_status_interval")
+
+
+def _otelcol_ready(status) -> bool:
+    """Return True once otelcol has finished installing and reached a stable status."""
+    app = status.apps.get(OTEL_COLLECTOR_APP_NAME)
+    if app is None:
+        return False
+    if app.app_status is None:
+        return False
+    return app.app_status.current in {"waiting", "blocked", "active"}
+
+
+def test_deploy_cos_proxy(juju: Juju, charm: str):
+    """Deploy cos-proxy. Expect BlockedStatus: no upstream or downstream relations yet."""
+    juju.deploy(charm, APP_NAME)
+    juju.wait(
+        lambda status: jubilant.all_blocked(status, APP_NAME),
+        timeout=10 * 60,
+        delay=10,
+        successes=3,
+    )
+
+
+def test_deploy_otelcol_and_integrate(juju: Juju):
+    """Deploy otelcol with metrics debug exporter, integrate with cos-proxy via cos-agent.
+
+    otelcol is the sink for scrape jobs emitted by cos-proxy. The debug exporter writes
+    scraped metrics to snap logs, allowing grep-based verification.
+
+    cos-proxy remains in BlockedStatus after this step: it has a downstream sink
+    (cos-agent) but no upstream source yet.
+    """
+    deploy_otelcol(juju, debug_exporter_for_metrics=True)
+    juju.integrate(
+        f"{APP_NAME}:cos-agent",
+        f"{OTEL_COLLECTOR_APP_NAME}:cos-agent",
+    )
+    juju.wait(
+        _otelcol_ready,
+        timeout=10 * 60,
+        delay=10,
+        successes=3,
+    )
+    juju.wait(
+        lambda status: jubilant.all_blocked(status, APP_NAME),
+        timeout=10 * 60,
+        delay=10,
+        successes=3,
+    )
+    patch_otel_collector_log_level(juju)
+
+
+def test_deploy_telegraf_and_integrate(juju: Juju):
+    """Deploy ubuntu + telegraf, integrate telegraf's metrics endpoint with cos-proxy.
+
+    After this step:
+    - cos-proxy has both an upstream source (telegraf:prometheus-client) and a
+      downstream sink (otelcol:cos-agent), so it should reach ActiveStatus.
+    - otelcol receives the scrape job and begins scraping telegraf's /metrics endpoint.
+    """
+    juju.deploy(UBUNTU_APP_NAME, channel="latest/stable", base=TELEGRAF_BASE)
+    juju.deploy(TELEGRAF_APP_NAME, channel="latest/stable")
+    juju.integrate(f"{TELEGRAF_APP_NAME}:juju-info", f"{UBUNTU_APP_NAME}:juju-info")
+    juju.integrate(
+        f"{APP_NAME}:prometheus-target",
+        f"{TELEGRAF_APP_NAME}:prometheus-client",
+    )
+    juju.wait(
+        lambda status: jubilant.all_active(status, APP_NAME),
+        error=jubilant.any_error,
+        timeout=25 * 60,
+        delay=10,
+        successes=3,
+    )
+
+
+@retry(stop=stop_after_attempt(20), wait=wait_fixed(15))
+def test_scrape_jobs_appear_in_otelcol_logs(juju: Juju):
+    """Verify that otelcol is scraping telegraf metrics with correct Juju topology labels.
+
+    The debug exporter writes collected data points to snap logs. We grep for:
+    - juju_application=cos-proxy: the label injected by cos-proxy's scrape job config.
+      cos-proxy labels the scrape job with its own topology (not telegraf's), so the
+      scrape-config label wins over telegraf's embedded juju_application=ubuntu label.
+    - conntrack_ip_conntrack_count: a telegraf-specific metric that proves the scrape
+      target (telegraf's /metrics endpoint on port 9103) is actually being reached.
+      This metric cannot originate from otelcol's own node-exporter or self-monitoring.
+    """
+    grep_filters = [
+        "juju_application=cos-proxy",
+        "conntrack_ip_conntrack_count",
+    ]
+    assert_pattern_in_snap_logs(juju, grep_filters)
+
+
+def test_remove_telegraf_relation(juju: Juju):
+    """Remove the prometheus-target relation between cos-proxy and telegraf.
+
+    cos-proxy should process the relation-departed event, clear the stored scrape
+    job for telegraf, and update the cos-agent databag. otelcol regenerates its
+    config without telegraf's receiver.
+    """
+    juju.remove_relation(
+        f"{APP_NAME}:prometheus-target",
+        f"{TELEGRAF_APP_NAME}:prometheus-client",
+    )
+    juju.wait(
+        lambda status: jubilant.all_blocked(status, APP_NAME),
+        timeout=10 * 60,
+        delay=10,
+        successes=3,
+    )
+
+
+@retry(stop=stop_after_attempt(10), wait=wait_fixed(10))
+def test_scrape_jobs_absent_from_otelcol_config(juju: Juju):
+    """Verify that otelcol's generated config no longer references telegraf after removal.
+
+    We check the generated config file rather than snap logs because snap log history
+    is cumulative and cannot prove absence of new entries.
+
+    The config file is regenerated by otelcol whenever it processes updated cos-agent
+    relation data, so its absence here proves the removal propagated correctly.
+    """
+    assert_pattern_absent_in_otelcol_config(juju, TELEGRAF_APP_NAME)
