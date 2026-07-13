@@ -23,6 +23,23 @@ APP_NAME = "cos-proxy"
 APP_BASE = "ubuntu@24.04"
 OTEL_COLLECTOR_APP_NAME = "opentelemetry-collector"
 COS_CHANNEL = "2/edge"
+TELEGRAF_APP_NAME = "telegraf"
+UBUNTU_APP_NAME = "ubuntu"
+TELEGRAF_BASE = "ubuntu@22.04"
+OTELCOL_CHANNEL = "dev/edge"
+
+
+def deploy_otelcol(juju: jubilant.Juju, **config_kwargs):
+    """Deploy opentelemetry-collector from charmhub.
+
+    Keyword arguments are passed as the ``config`` dict.
+    """
+    juju.deploy(
+        OTEL_COLLECTOR_APP_NAME,
+        channel=OTELCOL_CHANNEL,
+        base=APP_BASE,
+        config=config_kwargs if config_kwargs else None,
+    )
 
 
 def get_system_arch() -> str:
@@ -69,7 +86,7 @@ def patch_update_status_interval(juju: jubilant.Juju):
     juju.model_config(reset="update-status-hook-interval")
 
 
-@retry(stop=stop_after_attempt(2), wait=wait_fixed(10))
+@retry(stop=stop_after_attempt(30), wait=wait_fixed(10))
 def patch_otel_collector_log_level(juju: jubilant.Juju, unit_no: int = 0):
     """Patch the collector's log level to INFO for debug exporter inspection."""
     juju.ssh(
@@ -93,8 +110,9 @@ def juju():
 def charm():
     """Charm used for integration testing."""
     if charm_path := os.getenv("CHARM_PATH"):
-        logger.info("using charm from env: %s", charm_path)
-        return charm_path
+        resolved = str(Path(charm_path).resolve())
+        logger.info("using charm from env: %s", resolved)
+        return resolved
 
     arch = get_system_arch()
     charm_file = REPO_ROOT / f"cos-proxy_ubuntu@24.04-{arch}.charm"
