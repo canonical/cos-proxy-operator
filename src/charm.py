@@ -193,6 +193,7 @@ class COSProxyCharm(CharmBase):
             extra_alert_groups=self._get_stored_alert_groups,
             dashboard_dirs=[COS_PROXY_DASHBOARDS_DIR, DASHBOARDS_DIR],
             refresh_events=[
+                self.on.config_changed,
                 self.on.prometheus_target_relation_changed,
                 self.on.prometheus_target_relation_broken,
                 self.on.prometheus_rules_relation_changed,
@@ -440,11 +441,13 @@ class COSProxyCharm(CharmBase):
         return _type_convert_stored(self.metrics_aggregator._stored.jobs)  # pyright: ignore
 
     def _get_stored_alert_groups(self) -> Dict[str, Any]:
-        """Return the alert rules from stored state.
+        """Return the alert rules from stored state, respecting the forward_alert_rules config.
 
         The source of truth for alert rules exists in self.metrics_aggregator._stored.alert_rules
         and should be updated elsewhere accordingly to populate cos-agent relation data.
         """
+        if not self.config.get("forward_alert_rules", True):
+            return {"groups": []}
         return {"groups":_type_convert_stored(self.metrics_aggregator._stored.alert_rules)}  # pyright: ignore
 
     def _dashboards_relation_joined(self, _):
