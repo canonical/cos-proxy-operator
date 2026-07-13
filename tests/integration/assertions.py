@@ -7,10 +7,6 @@ from typing import List
 from conftest import OTEL_COLLECTOR_APP_NAME
 from jubilant import CLIError, Juju
 
-# A rule name unique to telegraf's built-in alert rules.
-# telegraf rev75 sends exactly these 6 rules via prometheus-rules:
-# rule_cpu_usage.j2 (CPU_Usage), rule_diskfull.j2 (DiskFull), rule_mem.j2,
-# rule_disk_ro.j2, rule_packetdrops.j2, rule_predict_disk_space.j2 (ThreeDayPredictedDiskOutage).
 TELEGRAF_RULE_MARKER = "ThreeDayPredictedDiskOutage"
 
 
