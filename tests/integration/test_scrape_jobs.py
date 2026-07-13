@@ -44,14 +44,7 @@ def test_deploy_cos_proxy(juju: Juju, charm: str):
 
 
 def test_deploy_otelcol_and_integrate(juju: Juju):
-    """Deploy otelcol with metrics debug exporter, integrate with cos-proxy via cos-agent.
-
-    otelcol is the sink for scrape jobs emitted by cos-proxy. The debug exporter writes
-    scraped metrics to snap logs, allowing grep-based verification.
-
-    cos-proxy remains in BlockedStatus after this step: it has a downstream sink
-    (cos-agent) but no upstream source yet.
-    """
+    """Deploy otelcol with metrics debug exporter, integrate with cos-proxy via cos-agent."""
     deploy_otelcol(juju, debug_exporter_for_metrics=True)
     juju.integrate(
         f"{APP_NAME}:cos-agent",

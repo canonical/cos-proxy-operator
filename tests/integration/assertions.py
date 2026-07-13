@@ -7,9 +7,11 @@ from typing import List
 from conftest import OTEL_COLLECTOR_APP_NAME
 from jubilant import CLIError, Juju
 
-# A rule name that is unique to telegraf's built-in alert rules
-# (see: tests/integration README, telegraf rev75 ships CPU_Usage, DiskFull, etc.)
-TELEGRAF_RULE_MARKER = "CPU_Usage"
+# A rule name unique to telegraf's built-in alert rules.
+# telegraf rev75 sends exactly these 6 rules via prometheus-rules:
+# rule_cpu_usage.j2 (CPU_Usage), rule_diskfull.j2 (DiskFull), rule_mem.j2,
+# rule_disk_ro.j2, rule_packetdrops.j2, rule_predict_disk_space.j2 (ThreeDayPredictedDiskOutage).
+TELEGRAF_RULE_MARKER = "ThreeDayPredictedDiskOutage"
 
 
 def assert_pattern_in_snap_logs(juju: Juju, grep_filters: List[str]):
@@ -38,10 +40,13 @@ def assert_pattern_absent_in_otelcol_config(juju: Juju, pattern: str):
     try:
         config = juju.ssh(
             f"{OTEL_COLLECTOR_APP_NAME}/0",
-            command=f"sudo cat {config_path} | grep '{pattern}' || true",
+            command=f"cat {config_path} | grep '{pattern}' || true",
         )
-    except CLIError:
-        return  # File absent = pattern absent = success
+    except CLIError as e:
+        raise AssertionError(
+            f"Config file {config_path} not found on {OTEL_COLLECTOR_APP_NAME}/0 "
+            f"(wrong unit, or charm is mid-hook?): {e}"
+        ) from e
     assert not config.strip(), (
         f"Pattern {pattern!r} was unexpectedly found in otelcol config after relation removal"
     )

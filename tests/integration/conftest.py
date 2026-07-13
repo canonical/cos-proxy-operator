@@ -29,37 +29,17 @@ TELEGRAF_BASE = "ubuntu@22.04"
 OTELCOL_CHANNEL = "dev/edge"
 
 
-def get_otelcol_charm() -> str | None:
-    """Return a local path to the otelcol charm, or None to deploy from charmhub."""
-    if charm_path := os.getenv("OTELCOL_CHARM_PATH"):
-        resolved = str(Path(charm_path).resolve())
-        logger.info("using otelcol charm from env: %s", resolved)
-        return resolved
-    return None
-
-
 def deploy_otelcol(juju: jubilant.Juju, **config_kwargs):
-    """Deploy opentelemetry-collector from a local file or charmhub.
+    """Deploy opentelemetry-collector from charmhub.
 
-    Keyword arguments are passed as the ``config`` dict.  If the env var
-    ``OTELCOL_CHARM_PATH`` is set, that local charm file is used; otherwise
-    the charm is resolved from charmhub using ``OTELCOL_CHANNEL``.
+    Keyword arguments are passed as the ``config`` dict.
     """
-    local_path = get_otelcol_charm()
-    if local_path:
-        juju.deploy(
-            local_path,
-            OTEL_COLLECTOR_APP_NAME,
-            base=APP_BASE,
-            config=config_kwargs if config_kwargs else None,
-        )
-    else:
-        juju.deploy(
-            OTEL_COLLECTOR_APP_NAME,
-            channel=OTELCOL_CHANNEL,
-            base=APP_BASE,
-            config=config_kwargs if config_kwargs else None,
-        )
+    juju.deploy(
+        OTEL_COLLECTOR_APP_NAME,
+        channel=OTELCOL_CHANNEL,
+        base=APP_BASE,
+        config=config_kwargs if config_kwargs else None,
+    )
 
 
 def get_system_arch() -> str:
@@ -106,7 +86,7 @@ def patch_update_status_interval(juju: jubilant.Juju):
     juju.model_config(reset="update-status-hook-interval")
 
 
-@retry(stop=stop_after_attempt(2), wait=wait_fixed(10))
+@retry(stop=stop_after_attempt(30), wait=wait_fixed(10))
 def patch_otel_collector_log_level(juju: jubilant.Juju, unit_no: int = 0):
     """Patch the collector's log level to INFO for debug exporter inspection."""
     juju.ssh(
@@ -121,8 +101,7 @@ def patch_otel_collector_log_level(juju: jubilant.Juju, unit_no: int = 0):
 def juju():
     """Juju instance with a temporary model for testing."""
     keep_models: bool = os.environ.get("KEEP_MODELS") is not None
-    controller: str | None = os.environ.get("JUJU_CONTROLLER")
-    with jubilant.temp_model(keep=keep_models, controller=controller) as juju:
+    with jubilant.temp_model(keep=keep_models) as juju:
         juju.cli("set-model-constraints", f"arch={get_system_arch()}")
         yield juju
 
