@@ -91,16 +91,7 @@ def test_deploy_telegraf_and_integrate(juju: Juju):
 
 @retry(stop=stop_after_attempt(20), wait=wait_fixed(15))
 def test_scrape_jobs_appear_in_otelcol_logs(juju: Juju):
-    """Verify that otelcol is scraping telegraf metrics with correct Juju topology labels.
-
-    The debug exporter writes collected data points to snap logs. We grep for:
-    - juju_application=cos-proxy: the label injected by cos-proxy's scrape job config.
-      cos-proxy labels the scrape job with its own topology (not telegraf's), so the
-      scrape-config label wins over telegraf's embedded juju_application=ubuntu label.
-    - conntrack_ip_conntrack_count: a telegraf-specific metric that proves the scrape
-      target (telegraf's /metrics endpoint on port 9103) is actually being reached.
-      This metric cannot originate from otelcol's own node-exporter or self-monitoring.
-    """
+    """Verify that otelcol is scraping telegraf metrics with correct Juju topology labels."""
     grep_filters = [
         "juju_application=cos-proxy",
         "conntrack_ip_conntrack_count",

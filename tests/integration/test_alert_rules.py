@@ -33,11 +33,7 @@ def test_deploy_cos_proxy(juju: Juju, charm: str):
 
 
 def test_deploy_otelcol_and_integrate(juju: Juju):
-    """Deploy otelcol and integrate with cos-proxy via cos-agent.
-
-    No debug exporter needed here — alert rule verification uses filesystem checks,
-    not snap log grepping.
-    """
+    """Deploy otelcol and integrate with cos-proxy via cos-agent."""
     deploy_otelcol(juju)
     juju.integrate(
         f"{APP_NAME}:cos-agent",
@@ -52,11 +48,7 @@ def test_deploy_otelcol_and_integrate(juju: Juju):
 
 
 def test_deploy_telegraf_and_integrate(juju: Juju):
-    """Deploy ubuntu + telegraf, integrate telegraf's alert rules with cos-proxy.
-
-    Uses the prometheus-rules relation (interface: prometheus-rules), which carries
-    raw Prometheus alert rule YAML groups from telegraf to cos-proxy.
-    """
+    """Deploy ubuntu + telegraf, integrate telegraf's alert rules with cos-proxy."""
     juju.deploy(UBUNTU_APP_NAME, channel="latest/stable", base=TELEGRAF_BASE)
     juju.deploy(TELEGRAF_APP_NAME, channel="latest/stable")
     juju.integrate(f"{TELEGRAF_APP_NAME}:juju-info", f"{UBUNTU_APP_NAME}:juju-info")
@@ -75,16 +67,7 @@ def test_deploy_telegraf_and_integrate(juju: Juju):
 
 @retry(stop=stop_after_attempt(20), wait=wait_fixed(15))
 def test_alert_rules_appear_in_otelcol(juju: Juju):
-    """Verify that telegraf's alert rules appear in otelcol's prometheus_alert_rules directory.
-
-    cos-proxy reads alert rule YAML from the prometheus-rules relation databag,
-    labels them with Juju topology, and writes them to the cos-agent databag.
-    otelcol then writes them to disk under its charm's prometheus_alert_rules/ directory.
-
-    The alert rules file is named after cos-proxy's Juju topology (juju_<model>_<uuid>_cos-proxy.rules).
-    We verify presence by grepping for a telegraf-specific rule name (TELEGRAF_RULE_MARKER)
-    inside the file content, not by the filename alone.
-    """
+    """Verify that telegraf's alert rules appear in otelcol's prometheus_alert_rules directory."""
     content = get_alert_rules_content_in_otelcol(juju, TELEGRAF_RULE_MARKER)
     assert content.strip(), (
         f"Expected telegraf rule marker {TELEGRAF_RULE_MARKER!r} in otelcol alert rules but got nothing"
@@ -92,12 +75,7 @@ def test_alert_rules_appear_in_otelcol(juju: Juju):
 
 
 def test_forward_alert_rules_false(juju: Juju):
-    """Verify that setting forward_alert_rules=false clears alert rules from otelcol.
-
-    This config option on cos-proxy suppresses rule forwarding to all downstream sinks.
-    otelcol should remove the rule files from its prometheus_alert_rules/ directory
-    once it processes the updated cos-agent databag.
-    """
+    """Verify that setting forward_alert_rules=false clears alert rules from otelcol."""
     juju.config(APP_NAME, {"forward_alert_rules": "false"})
     juju.wait(
         lambda status: jubilant.all_active(status, APP_NAME),
