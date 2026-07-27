@@ -8,7 +8,7 @@ from conftest import OTEL_COLLECTOR_APP_NAME
 from jubilant import CLIError, Juju
 
 TELEGRAF_RULE_MARKER = "ThreeDayPredictedDiskOutage"
-RABBITMQ_DASHBOARD_MARKER = "rabbitmq"
+RABBITMQ_DASHBOARD_MARKER = "rabbitmq-overview"
 RABBITMQ_RULE_MARKER = "RabbitMQ"
 
 

@@ -110,7 +110,6 @@ def test_scrape_targets_appear_in_otelcol(juju: Juju):
 
 def test_remove_rabbitmq_relations(juju: Juju):
     """Remove all relations between cos-proxy and rabbitmq-server."""
-    breakpoint()
     for relation in ["dashboards", "prometheus-rules", "prometheus-target"]:
         endpoint = f"{APP_NAME}:{relation}"
         rabbitmq_endpoint = {
