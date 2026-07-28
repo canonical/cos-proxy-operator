@@ -24,7 +24,7 @@ APP_BASE = "ubuntu@24.04"
 OTEL_COLLECTOR_APP_NAME = "opentelemetry-collector"
 TELEGRAF_APP_NAME = "telegraf"
 UBUNTU_APP_NAME = "ubuntu"
-TELEGRAF_BASE = "ubuntu@24.04"
+TELEGRAF_BASE = "ubuntu@22.04"
 OTELCOL_CHANNEL = "dev/edge"
 
 
