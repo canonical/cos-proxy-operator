@@ -24,7 +24,9 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
+  "id": 18,
   "links": [],
+  "liveNow": false,
   "panels": [
     {
       "collapsed": false,
@@ -50,14 +52,7 @@
             "mode": "thresholds"
           },
           "custom": {
-            "axisPlacement": "auto",
             "fillOpacity": 70,
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "insertNulls": false,
             "lineWidth": 0,
             "spanNulls": false
           },
@@ -68,7 +63,7 @@
             "steps": [
               {
                 "color": "red",
-                "value": 0
+                "value": null
               },
               {
                 "color": "green",
@@ -98,20 +93,18 @@
         "rowHeight": 0.9,
         "showValue": "never",
         "tooltip": {
-          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
-      "pluginVersion": "12.4.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheusds"
+            "uid": "${prometheusds}"
           },
           "editorMode": "builder",
-          "expr": "command_ok{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}",
+          "expr": "command_ok{juju_application=~\"$juju_application\", juju_unit=~\"$juju_unit\"}",
           "legendFormat": "{{command}} ({{juju_unit}})",
           "range": true,
           "refId": "A"
@@ -132,12 +125,7 @@
           },
           "custom": {
             "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
-            "footer": {
-              "reducers": []
-            },
+            "displayMode": "auto",
             "inspect": false
           },
           "mappings": [],
@@ -147,7 +135,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": 0
+                "value": null
               },
               {
                 "color": "red",
@@ -201,19 +189,25 @@
       },
       "id": 15,
       "options": {
-        "cellHeight": "sm",
+        "footer": {
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
         "showHeader": true,
         "sortBy": []
       },
-      "pluginVersion": "12.4.2",
+      "pluginVersion": "9.2.1",
       "targets": [
         {
           "datasource": {
             "type": "loki",
-            "uid": "$lokids"
+            "uid": "${lokids}"
           },
           "editorMode": "code",
-          "expr": "{juju_unit=~\"$juju_unit\", juju_application=~\"$juju_application\", juju_model=~\"$juju_model\", juju_model_uuid=~\"$juju_model_uuid\"} | json | level=\"info\" | command=~\".+\"",
+          "expr": "{juju_unit=~\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
           "queryType": "range",
           "refId": "A",
           "resolution": 1
@@ -326,13 +320,11 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -341,7 +333,6 @@
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -349,7 +340,6 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -365,7 +355,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": 0
+                "value": null
               },
               {
                 "color": "red",
@@ -392,20 +382,18 @@
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
-      "pluginVersion": "12.4.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheusds"
+            "uid": "${prometheusds}"
           },
           "editorMode": "builder",
-          "expr": "command_duration{juju_application=\"nrpe\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}",
+          "expr": "command_duration{juju_application=\"nrpe\"}",
           "legendFormat": "{{command}} ({{juju_unit}})",
           "range": true,
           "refId": "A"
@@ -425,13 +413,11 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "axisBorderShow": false,
             "axisCenteredZero": false,
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "barWidthFactor": 0.6,
             "drawStyle": "line",
             "fillOpacity": 0,
             "gradientMode": "none",
@@ -440,7 +426,6 @@
               "tooltip": false,
               "viz": false
             },
-            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -448,7 +433,6 @@
               "type": "linear"
             },
             "showPoints": "auto",
-            "showValues": false,
             "spanNulls": false,
             "stacking": {
               "group": "A",
@@ -464,7 +448,7 @@
             "steps": [
               {
                 "color": "green",
-                "value": 0
+                "value": null
               },
               {
                 "color": "red",
@@ -491,20 +475,18 @@
           "showLegend": true
         },
         "tooltip": {
-          "hideZeros": false,
           "mode": "single",
           "sort": "none"
         }
       },
-      "pluginVersion": "12.4.2",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheusds"
+            "uid": "${prometheusds}"
           },
           "editorMode": "builder",
-          "expr": "scrape_duration_seconds{juju_application=~\"$juju_application\",juju_model=~\"$juju_model\",juju_model_uuid=~\"$juju_model_uuid\",juju_unit=~\"$juju_unit\"}",
+          "expr": "scrape_duration_seconds{juju_application=~\"$juju_application\", juju_unit=~\"$juju_unit\"}",
           "legendFormat": "{{command}} ({{juju_unit}})",
           "range": true,
           "refId": "A"
@@ -518,10 +500,6 @@
         "type": "loki",
         "uid": "${lokids}"
       },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "gridPos": {
         "h": 12,
         "w": 24,
@@ -531,26 +509,23 @@
       "id": 14,
       "options": {
         "dedupStrategy": "signature",
-        "enableInfiniteScrolling": false,
         "enableLogDetails": true,
         "prettifyLogMessage": true,
         "showCommonLabels": false,
-        "showControls": false,
         "showLabels": false,
         "showTime": true,
         "sortOrder": "Descending",
-        "unwrappedColumns": false,
         "wrapLogMessage": true
       },
-      "pluginVersion": "12.4.2",
+      "pluginVersion": "9.2.1",
       "targets": [
         {
           "datasource": {
             "type": "loki",
-            "uid": "$lokids"
+            "uid": "${lokids}"
           },
           "editorMode": "builder",
-          "expr": "{juju_unit=~\"$juju_unit\", juju_application=~\"$juju_application\", juju_model=~\"$juju_model\", juju_model_uuid=~\"$juju_model_uuid\"} | json | level=\"info\" | command=~\".+\" | return_code!=\"0\"",
+          "expr": "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+` | return_code != `0`",
           "queryType": "range",
           "refId": "A"
         }
@@ -576,10 +551,6 @@
         "type": "loki",
         "uid": "${lokids}"
       },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
       "gridPos": {
         "h": 14,
         "w": 24,
@@ -589,26 +560,23 @@
       "id": 7,
       "options": {
         "dedupStrategy": "signature",
-        "enableInfiniteScrolling": false,
         "enableLogDetails": true,
         "prettifyLogMessage": false,
         "showCommonLabels": false,
-        "showControls": false,
         "showLabels": false,
         "showTime": false,
         "sortOrder": "Descending",
-        "unwrappedColumns": false,
         "wrapLogMessage": false
       },
-      "pluginVersion": "12.4.2",
+      "pluginVersion": "9.2.1",
       "targets": [
         {
           "datasource": {
             "type": "loki",
-            "uid": "$lokids"
+            "uid": "${lokids}"
           },
           "editorMode": "builder",
-          "expr": "{juju_unit=~\"$juju_unit\", juju_application=~\"$juju_application\", juju_model=~\"$juju_model\", juju_model_uuid=~\"$juju_model_uuid\"} | json | level=\"info\" | command=~\".+\"",
+          "expr": "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
           "queryType": "range",
           "refId": "A"
         }
@@ -617,56 +585,14 @@
       "type": "logs"
     }
   ],
-  "preload": false,
-  "refresh": "",
-  "schemaVersion": 42,
-  "tags": [
-    "charm: cos-proxy"
-  ],
+  "schemaVersion": 37,
+  "style": "dark",
+  "tags": [],
   "templating": {
     "list": [
       {
-        "allValue": ".*",
-        "datasource": {
-          "uid": "${prometheusds}"
-        },
-        "definition": "label_values(up{juju_model=~\"$juju_model\"},juju_model_uuid)",
-        "includeAll": true,
-        "label": "Juju model uuid",
-        "multi": true,
-        "name": "juju_model_uuid",
-        "options": [],
-        "query": {
-          "query": "label_values(up{juju_model=~\"$juju_model\"},juju_model_uuid)",
-          "refId": "StandardVariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "regexApplyTo": "value",
-        "type": "query"
-      },
-      {
-        "allValue": ".*",
-        "datasource": {
-          "uid": "${prometheusds}"
-        },
-        "definition": "label_values(up,juju_model)",
-        "includeAll": true,
-        "label": "Juju model",
-        "multi": true,
-        "name": "juju_model",
-        "options": [],
-        "query": {
-          "query": "label_values(up,juju_model)",
-          "refId": "StandardVariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "regexApplyTo": "value",
-        "type": "query"
-      },
-      {
         "current": {
+          "selected": false,
           "text": [
             "All"
           ],
@@ -676,9 +602,10 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "$prometheusds"
+          "uid": "${prometheusds}"
         },
         "definition": "label_values(up{juju_application=~\"$juju_application\"}, juju_unit)",
+        "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "juju_unit",
@@ -689,11 +616,34 @@
         },
         "refresh": 1,
         "regex": "",
-        "regexApplyTo": "value",
+        "skipUrlSync": false,
+        "sort": 0,
         "type": "query"
       },
       {
         "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "prometheusds",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": true,
           "text": [
             "nrpe"
           ],
@@ -703,9 +653,10 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "$prometheusds"
+          "uid": "${prometheusds}"
         },
         "definition": "label_values(up, juju_application)",
+        "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "juju_application",
@@ -716,32 +667,25 @@
         },
         "refresh": 1,
         "regex": "",
-        "regexApplyTo": "value",
+        "skipUrlSync": false,
+        "sort": 0,
         "type": "query"
       },
       {
         "current": {
-          "text": "juju_cos-lite_b1586e79-7fe4-4eea-8a42-41fbeffc1c0f_prometheus_0",
-          "value": "P25CF65E74CCD37CA"
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
         },
-        "description": "",
-        "name": "prometheusds",
-        "options": [],
-        "query": "prometheus",
-        "refresh": 1,
-        "regex": "",
-        "type": "datasource"
-      },
-      {
-        "current": {
-          "text": "juju_cos-lite_b1586e79-7fe4-4eea-8a42-41fbeffc1c0f_loki_0",
-          "value": "P7CDE7391AB7A524D"
-        },
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
         "name": "lokids",
         "options": [],
         "query": "loki",
         "refresh": 1,
         "regex": "",
+        "skipUrlSync": false,
         "type": "datasource"
       }
     ]
@@ -751,9 +695,9 @@
     "to": "now"
   },
   "timepicker": {},
-  "timezone": "browser",
+  "timezone": "",
   "title": "NRPE Metrics and Logs",
-  "uid": "51cdd7b975b7ff960c727b8249120fb8e8441652",
-  "version": 1,
+  "uid": "cLP8hHL4z",
+  "version": 6,
   "weekStart": ""
 }
