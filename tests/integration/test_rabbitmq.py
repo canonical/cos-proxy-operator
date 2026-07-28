@@ -9,6 +9,8 @@ from a charm-helpers/reactive charm (rabbitmq-server) propagate correctly throug
 cos-proxy to the opentelemetry-collector.
 """
 
+import logging
+
 import jubilant
 import pytest
 from assertions import (
@@ -24,23 +26,38 @@ from conftest import (
     deploy_otelcol,
 )
 from jubilant import Juju
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import (
+    after_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
+
+logger = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.usefixtures("patch_update_status_interval")
 
 RABBITMQ_APP_NAME = "rabbitmq-server"
 RABBITMQ_CHANNEL = "latest/edge"
 
+RETRY = retry(
+    retry=retry_if_exception_type(AssertionError),
+    wait=wait_exponential(multiplier=1, min=2, max=45),
+    stop=stop_after_attempt(10),
+    after=after_log(logger, logging.INFO),
+)
+
 
 def test_deploy_cos_proxy(juju: Juju, charm: str):
     """Deploy cos-proxy. Expect BlockedStatus: no upstream or downstream relations yet."""
     juju.deploy(charm, APP_NAME)
-    # TODO: Make the juju.wait() call use **kwargs to avoid writing it everywhere
     juju.wait(
-        lambda status: jubilant.all_blocked(status, APP_NAME),
+        lambda status: (
+            jubilant.all_blocked(status, APP_NAME) and jubilant.all_agents_idle(status, APP_NAME)
+        ),
+        error=jubilant.any_error,
         timeout=10 * 60,
-        delay=10,
-        successes=3,
     )
 
 
@@ -49,10 +66,12 @@ def test_deploy_otelcol_and_integrate(juju: Juju):
     deploy_otelcol(juju)
     juju.integrate(f"{APP_NAME}:cos-agent", f"{OTEL_COLLECTOR_APP_NAME}:cos-agent")
     juju.wait(
-        lambda status: jubilant.all_blocked(status, APP_NAME, OTEL_COLLECTOR_APP_NAME),
+        lambda status: (
+            jubilant.all_blocked(status, APP_NAME, OTEL_COLLECTOR_APP_NAME)
+            and jubilant.all_agents_idle(status, APP_NAME, OTEL_COLLECTOR_APP_NAME)
+        ),
+        error=jubilant.any_error,
         timeout=10 * 60,
-        delay=10,
-        successes=3,
     )
 
 
@@ -75,12 +94,10 @@ def test_deploy_rabbitmq_and_integrate(juju: Juju):
         ),
         error=jubilant.any_error,
         timeout=25 * 60,
-        delay=10,
-        successes=3,
     )
 
 
-@retry(stop=stop_after_attempt(20), wait=wait_fixed(15))
+@RETRY
 def test_dashboards_appear_in_otelcol(juju: Juju):
     """Verify that rabbitmq-server's dashboard arrives in otelcol via the dashboard+name format."""
     content = get_dashboard_content_in_otelcol(juju, RABBITMQ_DASHBOARD_MARKER)
@@ -89,7 +106,7 @@ def test_dashboards_appear_in_otelcol(juju: Juju):
     )
 
 
-@retry(stop=stop_after_attempt(20), wait=wait_fixed(15))
+@RETRY
 def test_alert_rules_appear_in_otelcol(juju: Juju):
     """Verify that rabbitmq-server's alert rules arrive in otelcol."""
     content = get_alert_rules_content_in_otelcol(juju, RABBITMQ_RULE_MARKER)
@@ -99,7 +116,7 @@ def test_alert_rules_appear_in_otelcol(juju: Juju):
     )
 
 
-@retry(stop=stop_after_attempt(20), wait=wait_fixed(15))
+@RETRY
 def test_scrape_targets_appear_in_otelcol(juju: Juju):
     """Verify that rabbitmq-server's scrape target arrives in otelcol's generated config."""
     content = get_scrape_config_content_in_otelcol(juju, RABBITMQ_APP_NAME)
@@ -120,14 +137,15 @@ def test_remove_rabbitmq_relations(juju: Juju):
         juju.remove_relation(endpoint, rabbitmq_endpoint)
 
     juju.wait(
-        lambda status: jubilant.all_blocked(status, APP_NAME),
+        lambda status: (
+            jubilant.all_blocked(status, APP_NAME) and jubilant.all_agents_idle(status, APP_NAME)
+        ),
+        error=jubilant.any_error,
         timeout=10 * 60,
-        delay=10,
-        successes=3,
     )
 
 
-@retry(stop=stop_after_attempt(20), wait=wait_fixed(10))
+@RETRY
 def test_dashboards_absent_from_otelcol(juju: Juju):
     """Verify that rabbitmq-server's dashboard is removed from otelcol after relation removal."""
     content = get_dashboard_content_in_otelcol(juju, RABBITMQ_DASHBOARD_MARKER)
@@ -137,7 +155,7 @@ def test_dashboards_absent_from_otelcol(juju: Juju):
     )
 
 
-@retry(stop=stop_after_attempt(20), wait=wait_fixed(10))
+@RETRY
 def test_alert_rules_absent_from_otelcol(juju: Juju):
     """Verify that rabbitmq-server's alert rules are removed from otelcol after relation removal."""
     content = get_alert_rules_content_in_otelcol(juju, RABBITMQ_RULE_MARKER)
@@ -147,7 +165,7 @@ def test_alert_rules_absent_from_otelcol(juju: Juju):
     )
 
 
-@retry(stop=stop_after_attempt(20), wait=wait_fixed(10))
+@RETRY
 def test_scrape_targets_absent_from_otelcol(juju: Juju):
     """Verify that rabbitmq-server's scrape target is removed from otelcol after relation removal."""
     content = get_scrape_config_content_in_otelcol(juju, RABBITMQ_APP_NAME)
