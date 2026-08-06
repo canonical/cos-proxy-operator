@@ -8,6 +8,7 @@ import jubilant
 import pytest
 from assertions import assert_pattern_absent_in_otelcol_config, assert_pattern_in_snap_logs
 from conftest import (
+    APP_BASE,
     APP_NAME,
     OTEL_COLLECTOR_APP_NAME,
     TELEGRAF_APP_NAME,
@@ -34,7 +35,7 @@ def _otelcol_ready(status) -> bool:
 
 def test_deploy_cos_proxy(juju: Juju, charm: str):
     """Deploy cos-proxy. Expect BlockedStatus: no upstream or downstream relations yet."""
-    juju.deploy(charm, APP_NAME)
+    juju.deploy(charm, APP_NAME, base=APP_BASE)
     juju.wait(
         lambda status: jubilant.all_blocked(status, APP_NAME),
         timeout=10 * 60,
