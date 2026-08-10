@@ -18,11 +18,10 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 
 logger = logging.getLogger("conftest")
 REPO_ROOT = Path(__file__).parent.parent.parent
-METADATA = yaml.safe_load(Path("./charmcraft.yaml").read_text())
+METADATA = yaml.safe_load(Path(f"{REPO_ROOT}/charmcraft.yaml").read_text())
 APP_NAME = "cos-proxy"
 APP_BASE = "ubuntu@24.04"
 OTEL_COLLECTOR_APP_NAME = "opentelemetry-collector"
-COS_CHANNEL = "2/edge"
 TELEGRAF_APP_NAME = "telegraf"
 UBUNTU_APP_NAME = "ubuntu"
 TELEGRAF_BASE = "ubuntu@22.04"

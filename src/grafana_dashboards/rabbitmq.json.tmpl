@@ -1,9 +1,7 @@
 {
-"dashboard":
-{
   "__inputs": [
     {
-      "name": "{{ datasource }}",
+      "name": "datasource",
       "label": "prometheus - Juju generated source",
       "description": "",
       "type": "datasource",
@@ -60,7 +58,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "fill": 1,
           "id": 1,
           "legend": {
@@ -88,7 +86,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rabbitmq_overview_queues",
+              "expr": "rabbitmq_queues",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -137,7 +135,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "fill": 1,
           "id": 2,
           "legend": {
@@ -165,7 +163,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "irate(rabbitmq_overview_messages_acked[1m])",
+              "expr": "irate(rabbitmq_global_messages_acknowledged_total[1m])",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -173,7 +171,7 @@
               "refId": "A"
             },
             {
-              "expr": "irate(rabbitmq_overview_messages_unacked[1m])",
+              "expr": "sum by (host) (rabbitmq_queue_messages_unacked)",
               "format": "time_series",
               "interval": "1m",
               "intervalFactor": 2,
@@ -181,7 +179,7 @@
               "refId": "B"
             },
             {
-              "expr": "irate(rabbitmq_overview_messages_delivered[1m])",
+              "expr": "irate(rabbitmq_global_messages_delivered_total[1m])",
               "format": "time_series",
               "interval": "1m",
               "intervalFactor": 2,
@@ -189,7 +187,7 @@
               "refId": "C"
             },
             {
-              "expr": "irate(rabbitmq_overview_messages_published[1m])",
+              "expr": "irate(rabbitmq_global_messages_received_total[1m])",
               "format": "time_series",
               "interval": "1m",
               "intervalFactor": 2,
@@ -197,7 +195,7 @@
               "refId": "D"
             },
             {
-              "expr": "irate(rabbitmq_overview_messages_ready[1m])",
+              "expr": "sum by (host) (rabbitmq_queue_messages_ready)",
               "format": "time_series",
               "interval": "1m",
               "intervalFactor": 2,
@@ -246,7 +244,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "fill": 1,
           "id": 3,
           "legend": {
@@ -274,7 +272,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rabbitmq_overview_consumers",
+              "expr": "rabbitmq_consumers",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -323,7 +321,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "fill": 1,
           "id": 5,
           "legend": {
@@ -351,7 +349,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rabbitmq_overview_exchanges",
+              "expr": "rabbitmq_exchanges",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -400,7 +398,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "fill": 1,
           "id": 4,
           "legend": {
@@ -428,7 +426,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rabbitmq_overview_connections",
+              "expr": "rabbitmq_connections",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -477,7 +475,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "fill": 1,
           "id": 6,
           "legend": {
@@ -505,7 +503,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rabbitmq_overview_channels",
+              "expr": "rabbitmq_channels",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -566,7 +564,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "fill": 1,
           "id": 7,
           "legend": {
@@ -594,7 +592,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "(rabbitmq_node_fd_used/rabbitmq_node_fd_total)",
+              "expr": "rabbitmq_process_open_fds / rabbitmq_process_max_fds",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -643,7 +641,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "decimals": 2,
           "fill": 1,
           "id": 8,
@@ -672,7 +670,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rabbitmq_node_sockets_used/rabbitmq_node_sockets_total",
+              "expr": "rabbitmq_process_open_tcp_sockets / rabbitmq_process_max_tcp_sockets",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -722,7 +720,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "decimals": 2,
           "fill": 1,
           "id": 9,
@@ -751,7 +749,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rabbitmq_node_mem_used/rabbitmq_node_mem_limit",
+              "expr": "rabbitmq_process_resident_memory_bytes / rabbitmq_resident_memory_limit_bytes",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -801,7 +799,7 @@
           "bars": false,
           "dashLength": 10,
           "dashes": false,
-          "datasource": "{{ datasource }}",
+          "datasource": "${datasource}",
           "decimals": 2,
           "fill": 1,
           "id": 10,
@@ -830,7 +828,7 @@
           "steppedLine": false,
           "targets": [
             {
-              "expr": "rabbitmq_node_proc_used/rabbitmq_node_proc_total",
+              "expr": "rabbitmq_erlang_processes_used / rabbitmq_erlang_processes_limit",
               "format": "time_series",
               "interval": "",
               "intervalFactor": 2,
@@ -922,6 +920,4 @@
   "timezone": "",
   "title": "[juju] RabbitMQ",
   "version": 4
-},
-"overwrite": true
 }

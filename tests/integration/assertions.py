@@ -8,6 +8,8 @@ from conftest import OTEL_COLLECTOR_APP_NAME
 from jubilant import CLIError, Juju
 
 TELEGRAF_RULE_MARKER = "ThreeDayPredictedDiskOutage"
+RABBITMQ_DASHBOARD_MARKER = "rabbitmq-overview"
+RABBITMQ_RULE_MARKER = "RabbitMQ"
 
 
 def assert_pattern_in_snap_logs(juju: Juju, grep_filters: List[str]):
@@ -72,7 +74,43 @@ def get_alert_rules_content_in_otelcol(juju: Juju, pattern: str) -> str:
     try:
         return juju.ssh(
             unit,
-            command=f"grep -r '{pattern}' {rules_dir} 2>/dev/null || true",
+            command=f"grep -rF '{pattern}' {rules_dir} 2>/dev/null || true",
+        )
+    except CLIError:
+        return ""
+
+
+def get_dashboard_files_in_otelcol(juju: Juju) -> str:
+    """Return a string of all dashboard JSON file paths in otelcol's grafana_dashboards dir."""
+    unit = f"{OTEL_COLLECTOR_APP_NAME}/0"
+    unit_dir = f"unit-{OTEL_COLLECTOR_APP_NAME.replace('-', '-')}-0"
+    dashboards_dir = f"/var/lib/juju/agents/{unit_dir}/charm/grafana_dashboards"
+    try:
+        return juju.ssh(unit, command=f"find {dashboards_dir} -name '*.json' -type f 2>/dev/null || true")
+    except CLIError:
+        return ""
+
+
+def get_dashboard_content_in_otelcol(juju: Juju, pattern: str) -> str:
+    """Return dashboard file paths whose names contain the given pattern.
+
+    Searches the grafana_dashboards directory for files matching the pattern
+    in their filename (not content), since dashboard filenames encode the
+    originating charm name and title.
+    """
+    files = get_dashboard_files_in_otelcol(juju)
+    return "\n".join(
+        f for f in files.splitlines() if pattern in f
+    )
+
+
+def get_scrape_config_content_in_otelcol(juju: Juju, pattern: str) -> str:
+    """Return lines matching pattern in otelcol's generated scrape config file."""
+    config_path = f"/etc/otelcol/config.d/{OTEL_COLLECTOR_APP_NAME}_0.yaml"
+    try:
+        return juju.ssh(
+            f"{OTEL_COLLECTOR_APP_NAME}/0",
+            command=f"grep '{pattern}' {config_path} 2>/dev/null || true",
         )
     except CLIError:
         return ""
