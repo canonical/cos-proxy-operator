@@ -44,7 +44,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$prometheusds"
+        "uid": "${prometheusds}"
       },
       "fieldConfig": {
         "defaults": {
@@ -101,7 +101,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheusds"
+            "uid": "${prometheusds}"
           },
           "editorMode": "builder",
           "expr": "command_ok{juju_application=~\"$juju_application\", juju_unit=~\"$juju_unit\"}",
@@ -116,7 +116,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "$lokids"
+        "uid": "${lokids}"
       },
       "fieldConfig": {
         "defaults": {
@@ -204,7 +204,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "$lokids"
+            "uid": "${lokids}"
           },
           "editorMode": "code",
           "expr": "{juju_unit=~\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
@@ -312,7 +312,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$prometheusds"
+        "uid": "${prometheusds}"
       },
       "fieldConfig": {
         "defaults": {
@@ -390,7 +390,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheusds"
+            "uid": "${prometheusds}"
           },
           "editorMode": "builder",
           "expr": "command_duration{juju_application=\"nrpe\"}",
@@ -405,7 +405,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$prometheusds"
+        "uid": "${prometheusds}"
       },
       "fieldConfig": {
         "defaults": {
@@ -483,7 +483,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheusds"
+            "uid": "${prometheusds}"
           },
           "editorMode": "builder",
           "expr": "scrape_duration_seconds{juju_application=~\"$juju_application\", juju_unit=~\"$juju_unit\"}",
@@ -498,7 +498,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "$lokids"
+        "uid": "${lokids}"
       },
       "gridPos": {
         "h": 12,
@@ -522,7 +522,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "$lokids"
+            "uid": "${lokids}"
           },
           "editorMode": "builder",
           "expr": "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+` | return_code != `0`",
@@ -549,7 +549,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "$lokids"
+        "uid": "${lokids}"
       },
       "gridPos": {
         "h": 14,
@@ -573,7 +573,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "$lokids"
+            "uid": "${lokids}"
           },
           "editorMode": "builder",
           "expr": "{juju_unit=\"$juju_unit\"} | json | level = `info` | command =~ `.+`",
@@ -602,7 +602,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "$prometheusds"
+          "uid": "${prometheusds}"
         },
         "definition": "label_values(up{juju_application=~\"$juju_application\"}, juju_unit)",
         "hide": 0,
@@ -653,7 +653,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "$prometheusds"
+          "uid": "${prometheusds}"
         },
         "definition": "label_values(up, juju_application)",
         "hide": 0,

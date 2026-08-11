@@ -541,7 +541,8 @@ class MetricsEndpointAggregator(Object):
         for unit in relation.units:
             if not (unit_databag := relation.data.get(unit)):
                 continue
-            if not (hostname := unit_databag.get("hostname")):
+            hostname = unit_databag.get("hostname") or unit_databag.get("ingress-address")
+            if not hostname:
                 continue
             port = unit_databag.get("port", 80)
             targets.update({unit.name: {"hostname": hostname, "port": port}})
