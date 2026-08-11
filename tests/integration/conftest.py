@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -20,7 +21,7 @@ logger = logging.getLogger("conftest")
 REPO_ROOT = Path(__file__).parent.parent.parent
 METADATA = yaml.safe_load(Path(f"{REPO_ROOT}/charmcraft.yaml").read_text())
 APP_NAME = "cos-proxy"
-APP_BASE = "ubuntu@24.04"
+APP_BASE = "ubuntu@26.04"
 OTEL_COLLECTOR_APP_NAME = "opentelemetry-collector"
 TELEGRAF_APP_NAME = "telegraf"
 UBUNTU_APP_NAME = "ubuntu"
@@ -109,15 +110,16 @@ def juju():
 def charm():
     """Charm used for integration testing."""
     if charm_path := os.getenv("CHARM_PATH"):
+        charm_path = re.sub(r"ubuntu@\d+\.\d+", APP_BASE, charm_path)
         resolved = str(Path(charm_path).resolve())
         logger.info("using charm from env: %s", resolved)
         return resolved
 
     arch = get_system_arch()
-    charm_file = REPO_ROOT / f"cos-proxy_ubuntu@24.04-{arch}.charm"
+    charm_file = REPO_ROOT / f"cos-proxy_{APP_BASE.replace('@', '-')}-{arch}.charm"
     if charm_file.exists():
         logger.info("using existing charm: %s", charm_file)
         return str(charm_file)
 
     logger.info("packing charm from %s", REPO_ROOT)
-    return str(pack(REPO_ROOT, platform=f"ubuntu@24.04:{arch}"))
+    return str(pack(REPO_ROOT, platform=f"{APP_BASE}:{arch}"))

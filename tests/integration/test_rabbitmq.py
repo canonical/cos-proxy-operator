@@ -21,6 +21,7 @@ from assertions import (
     get_scrape_config_content_in_otelcol,
 )
 from conftest import (
+    APP_BASE,
     APP_NAME,
     OTEL_COLLECTOR_APP_NAME,
     deploy_otelcol,
@@ -51,7 +52,7 @@ RETRY = retry(
 
 def test_deploy_cos_proxy(juju: Juju, charm: str):
     """Deploy cos-proxy. Expect BlockedStatus: no upstream or downstream relations yet."""
-    juju.deploy(charm, APP_NAME)
+    juju.deploy(charm, APP_NAME, base=APP_BASE)
     juju.wait(
         lambda status: (
             jubilant.all_blocked(status, APP_NAME) and jubilant.all_agents_idle(status, APP_NAME)
