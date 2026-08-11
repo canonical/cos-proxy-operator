@@ -46,7 +46,7 @@ def _otel_collector_ready(status):
 @given("a cos-proxy charm is deployed")
 def test_deploy_cos_proxy(juju: Juju, charm):
     """Deploy the cos-proxy charm."""
-    juju.deploy(charm, APP_NAME)
+    juju.deploy(charm, APP_NAME, base=APP_BASE)
     juju.wait(
         lambda status: jubilant.all_blocked(status, APP_NAME),
         timeout=10 * 60,
