@@ -21,7 +21,6 @@ from assertions import (
     get_scrape_config_content_in_otelcol,
 )
 from conftest import (
-    APP_BASE,
     APP_NAME,
     OTEL_COLLECTOR_APP_NAME,
     deploy_otelcol,
@@ -41,6 +40,9 @@ pytestmark = pytest.mark.usefixtures("patch_update_status_interval")
 
 RABBITMQ_APP_NAME = "rabbitmq-server"
 RABBITMQ_CHANNEL = "latest/edge"
+# rabbitmq-server has no ubuntu@26.04 revision, so this whole scenario runs on 24.04
+# to keep the otelcol subordinate compatible with both principals.
+RABBITMQ_BASE = "ubuntu@24.04"
 
 RETRY = retry(
     retry=retry_if_exception_type(AssertionError),
@@ -50,9 +52,9 @@ RETRY = retry(
 )
 
 
-def test_deploy_cos_proxy(juju: Juju, charm: str):
+def test_deploy_cos_proxy(juju: Juju, charm_24_04: str):
     """Deploy cos-proxy. Expect BlockedStatus: no upstream or downstream relations yet."""
-    juju.deploy(charm, APP_NAME, base=APP_BASE)
+    juju.deploy(charm_24_04, APP_NAME, base=RABBITMQ_BASE)
     juju.wait(
         lambda status: (
             jubilant.all_blocked(status, APP_NAME) and jubilant.all_agents_idle(status, APP_NAME)
@@ -64,7 +66,7 @@ def test_deploy_cos_proxy(juju: Juju, charm: str):
 
 def test_deploy_otelcol_and_integrate(juju: Juju):
     """Deploy otelcol and integrate with cos-proxy via cos-agent."""
-    deploy_otelcol(juju)
+    deploy_otelcol(juju, base=RABBITMQ_BASE)
     juju.integrate(f"{APP_NAME}:cos-agent", f"{OTEL_COLLECTOR_APP_NAME}:cos-agent")
     juju.wait(
         lambda status: (
@@ -78,7 +80,7 @@ def test_deploy_otelcol_and_integrate(juju: Juju):
 
 def test_deploy_rabbitmq_and_integrate(juju: Juju):
     """Deploy rabbitmq-server, integrate dashboards, alert rules, and scrape targets."""
-    juju.deploy(RABBITMQ_APP_NAME, channel=RABBITMQ_CHANNEL, base="ubuntu@24.04")
+    juju.deploy(RABBITMQ_APP_NAME, channel=RABBITMQ_CHANNEL, base=RABBITMQ_BASE)
 
     # Logs, Metrics, Alert rules, Dashboards
     juju.integrate(f"{RABBITMQ_APP_NAME}:juju-info", f"{OTEL_COLLECTOR_APP_NAME}:juju-info")
