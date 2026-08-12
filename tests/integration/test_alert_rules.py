@@ -8,6 +8,7 @@ import jubilant
 import pytest
 from assertions import TELEGRAF_RULE_MARKER, get_alert_rules_content_in_otelcol
 from conftest import (
+    APP_BASE,
     APP_NAME,
     OTEL_COLLECTOR_APP_NAME,
     TELEGRAF_APP_NAME,
@@ -23,7 +24,7 @@ pytestmark = pytest.mark.usefixtures("patch_update_status_interval")
 
 def test_deploy_cos_proxy(juju: Juju, charm: str):
     """Deploy cos-proxy. Expect BlockedStatus: no upstream or downstream relations yet."""
-    juju.deploy(charm, APP_NAME)
+    juju.deploy(charm, APP_NAME, base=APP_BASE)
     juju.wait(
         lambda status: jubilant.all_blocked(status, APP_NAME),
         timeout=10 * 60,

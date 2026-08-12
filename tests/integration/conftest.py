@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -20,7 +21,7 @@ logger = logging.getLogger("conftest")
 REPO_ROOT = Path(__file__).parent.parent.parent
 METADATA = yaml.safe_load(Path(f"{REPO_ROOT}/charmcraft.yaml").read_text())
 APP_NAME = "cos-proxy"
-APP_BASE = "ubuntu@24.04"
+APP_BASE = "ubuntu@26.04"
 OTEL_COLLECTOR_APP_NAME = "opentelemetry-collector"
 TELEGRAF_APP_NAME = "telegraf"
 UBUNTU_APP_NAME = "ubuntu"
@@ -28,7 +29,7 @@ TELEGRAF_BASE = "ubuntu@22.04"
 OTELCOL_CHANNEL = "dev/edge"
 
 
-def deploy_otelcol(juju: jubilant.Juju, **config_kwargs):
+def deploy_otelcol(juju: jubilant.Juju, base: str = APP_BASE, **config_kwargs):
     """Deploy opentelemetry-collector from charmhub.
 
     Keyword arguments are passed as the ``config`` dict.
@@ -36,7 +37,7 @@ def deploy_otelcol(juju: jubilant.Juju, **config_kwargs):
     juju.deploy(
         OTEL_COLLECTOR_APP_NAME,
         channel=OTELCOL_CHANNEL,
-        base=APP_BASE,
+        base=base,
         config=config_kwargs if config_kwargs else None,
     )
 
@@ -105,19 +106,31 @@ def juju():
         yield juju
 
 
-@fixture(scope="module")
-def charm():
-    """Charm used for integration testing."""
+def _charm_for_base(base: str) -> str:
+    """Resolve the packed cos-proxy charm for the given base."""
     if charm_path := os.getenv("CHARM_PATH"):
+        charm_path = re.sub(r"ubuntu@\d+\.\d+", base, charm_path)
         resolved = str(Path(charm_path).resolve())
         logger.info("using charm from env: %s", resolved)
         return resolved
 
     arch = get_system_arch()
-    charm_file = REPO_ROOT / f"cos-proxy_ubuntu@24.04-{arch}.charm"
+    charm_file = REPO_ROOT / f"cos-proxy_{base.replace('@', '-')}-{arch}.charm"
     if charm_file.exists():
         logger.info("using existing charm: %s", charm_file)
         return str(charm_file)
 
     logger.info("packing charm from %s", REPO_ROOT)
-    return str(pack(REPO_ROOT, platform=f"ubuntu@24.04:{arch}"))
+    return str(pack(REPO_ROOT, platform=f"{base}:{arch}"))
+
+
+@fixture(scope="module")
+def charm():
+    """Charm (default base) used for integration testing."""
+    return _charm_for_base(APP_BASE)
+
+
+@fixture(scope="module")
+def charm_24_04():
+    """Charm packed for ubuntu@24.04, for principals without a 26.04 revision."""
+    return _charm_for_base("ubuntu@24.04")
