@@ -211,7 +211,9 @@ class GrafanaAgentMachineCharm(GrafanaAgentCharm)
 ```
 """
 
+import copy
 import enum
+import hashlib
 import json
 import logging
 import socket
@@ -254,7 +256,7 @@ if TYPE_CHECKING:
 
 LIBID = "dc15fa84cef84ce58155fb84f6c6213a"
 LIBAPI = 0
-LIBPATCH = 22
+LIBPATCH = 27
 
 PYDEPS = ["cosl >= 0.0.50", "pydantic"]
 
@@ -306,6 +308,13 @@ def _dedupe_list(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if item not in unique_items:
             unique_items.append(item)
     return unique_items
+
+
+def _dict_hash_except_key(scrape_config: Dict[str, Any], key: Optional[str]):
+    """Get a hash of the scrape_config dict, except for the specified key."""
+    cfg_for_hash = {k: v for k, v in scrape_config.items() if k != key}
+    serialized = json.dumps(cfg_for_hash, sort_keys=True)
+    return hashlib.blake2b(serialized.encode(), digest_size=4).hexdigest()
 
 
 class TracingError(Exception):
@@ -644,6 +653,9 @@ class COSAgentProvider(Object):
             scrape_configs: List of standard scrape_configs dicts or a callable
                 that returns the list in case the configs need to be generated dynamically.
                 The contents of this list will be merged with the contents of `metrics_endpoints`.
+            extra_alert_groups: A callable that returns a dict of alert rule groups in case the
+                alerts need to be generated dynamically. The contents of this dict will be merged
+                with generic and bundled alert rules.
         """
         super().__init__(charm, relation_name)
         dashboard_dirs = dashboard_dirs or ["./src/grafana_dashboards"]
@@ -694,6 +706,27 @@ class COSAgentProvider(Object):
                 ) as e:
                     logger.error("Invalid relation data provided: %s", e)
 
+    def _deterministic_scrape_configs(
+        self, scrape_configs: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Get deterministic scrape_configs with stable job names.
+
+        For stability across serializations, compute a short per-config hash
+        and append it to the existing job name (or 'default'). Keep the app
+        name as a prefix: <app>_<job_or_default>_<8hex-hash>.
+
+        Hash the whole scrape_config (except any existing job_name) so the
+        suffix is sensitive to all stable fields. Use deterministic JSON
+        serialization.
+        """
+        local_scrape_configs = copy.deepcopy(scrape_configs)
+        for scrape_config in local_scrape_configs:
+            name = scrape_config.get("job_name", "default")
+            short_id = _dict_hash_except_key(scrape_config, "job_name")
+            scrape_config["job_name"] = f"{self._charm.app.name}_{name}_{short_id}"
+
+        return sorted(local_scrape_configs, key=lambda c: c.get("job_name", ""))
+
     @property
     def _scrape_jobs(self) -> List[Dict]:
         """Return a list of scrape_configs.
@@ -718,7 +751,7 @@ class COSAgentProvider(Object):
 
         scrape_configs = scrape_configs or []
 
-        return scrape_configs
+        return self._deterministic_scrape_configs(scrape_configs)
 
     @property
     def _metrics_alert_rules(self) -> Dict:
@@ -734,7 +767,7 @@ class COSAgentProvider(Object):
         )
         alert_rules.add_path(self._metrics_rules, recursive=self._recursive)
         alert_rules.add(
-            generic_alert_groups.application_rules,
+            copy.deepcopy(generic_alert_groups.application_rules),
             group_name_prefix=JujuTopology.from_charm(self._charm).identifier,
         )
 
@@ -754,7 +787,7 @@ class COSAgentProvider(Object):
     def _dashboards(self) -> List[str]:
         dashboards: List[str] = []
         for d in self._dashboard_dirs:
-            for path in Path(d).glob("*"):
+            for path in sorted(Path(d).glob("*")):
                 with open(path, "rt") as fp:
                     dashboard = json.load(fp)
                 rel_path = str(
@@ -1078,7 +1111,8 @@ class COSAgentRequirer(Object):
                                 type=receiver_protocol_to_transport_protocol[protocol],
                             ),
                         )
-                        for protocol in self.requested_tracing_protocols()
+                        # Sort for a stable order across serializations: the source is a set.
+                        for protocol in sorted(self.requested_tracing_protocols())
                     ],
                 ).dump(relation.data[self._charm.unit])
 
@@ -1218,7 +1252,10 @@ class COSAgentRequirer(Object):
                 peer_data.append(data)
                 app_names.add(app_name)
 
-        return peer_data
+        # Sort for a stable order across events: peer units are iterated as a set, so
+        # consumers aggregating this data (deduping by app name) would otherwise see
+        # varying orders.
+        return sorted(peer_data, key=lambda data: data.app_name)
 
     @property
     def metrics_alerts(self) -> Dict[str, Any]:
@@ -1363,6 +1400,7 @@ class COSAgentRequirer(Object):
         dashboards: List[Dict[str, Any]] = []
 
         seen_apps: List[str] = []
+        no_title_counter = 0
         for data in self._gather_peer_data():
             app_name = data.app_name
             if app_name in seen_apps:
@@ -1372,7 +1410,10 @@ class COSAgentRequirer(Object):
             for encoded_dashboard in data.dashboards or ():
                 content = json.loads(LZMABase64.decompress(encoded_dashboard))
 
-                title = content.get("title", "no_title")
+                title = content.get("title") or content.get("dashboard", {}).get("title")
+                if not title:
+                    no_title_counter += 1
+                    title = f"no_title_{no_title_counter}"
 
                 dashboards.append(
                     {
@@ -1384,7 +1425,11 @@ class COSAgentRequirer(Object):
                     }
                 )
 
-        return dashboards
+        # Sort for a stable order regardless of the order in which dashboards were stored.
+        return sorted(
+            dashboards,
+            key=lambda dashboard: (dashboard["charm"], dashboard["title"]),
+        )
 
 
 def charm_tracing_config(
